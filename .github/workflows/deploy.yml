@@ -1,0 +1,76 @@
+name: Deploy to GitHub Pages
+
+on:
+  # main 브랜치에 push할 때마다 자동 실행
+  push:
+    branches:
+      - main
+
+  # GitHub Actions 탭에서 수동으로도 실행할 수 있게 허용
+  workflow_dispatch:
+
+# GitHub Pages에 배포할 권한 설정
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시에 여러 배포가 겹치지 않도록 설정
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  # ① 빌드 Job: 코드를 받아서 빌드
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 레포지토리 코드 가져오기
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      # 2. pnpm 설치 (이 프로젝트는 npm이 아닌 pnpm을 써요)
+      - name: pnpm 설치
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # 3. Node.js 설치 (pnpm 캐시도 같이 설정)
+      - name: Node.js 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 4. 의존성 패키지 설치 (npm install 과 같은 역할)
+      - name: 패키지 설치
+        run: pnpm install
+
+      # 5. 빌드 실행 (tsc -b && vite build)
+      - name: 빌드
+        run: pnpm run build
+
+      # 6. GitHub Pages 배포를 위한 환경 설정
+      - name: GitHub Pages 환경 설정
+        uses: actions/configure-pages@v5
+
+      # 7. 빌드 결과물(dist 폴더)을 다음 Job에 전달하기 위해 업로드
+      - name: 빌드 결과물 업로드
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # ② 배포 Job: 빌드 결과물을 GitHub Pages에 올리기
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  # 빌드 Job이 성공해야만 실행됨
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: GitHub Pages에 배포
+        id: deployment
+        uses: actions/deploy-pages@v4

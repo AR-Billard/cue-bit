@@ -4,7 +4,7 @@ import Main from "./routes/main";
 
 function AppRouter() {
     return (
-        <BrowserRouter>
+        <BrowserRouter basename={import.meta.env.BASE_URL}>
             <Routes>
                 <Route index element={<Navigate to={paths.main.path} />} />
 

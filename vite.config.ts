@@ -44,15 +44,19 @@ function chii(host: string, port: number): Plugin {
 export default defineConfig((config) => {
     const env = loadEnv(config.mode, process.cwd(), "");
 
+    const chiiHost = env["VITE_CHII_HOST"] || "localhost:8080";
+    const chiiPort = Number(env["VITE_CHII_PORT"]) || 8080;
+
     return {
+        base: '/AR_project/',
         plugins: [
             react(),
             // wasm 로딩 플러그인
             wasm(),
             // tsconfig paths 적용 플러그인
             tsconfigPaths(),
-            // 원격 디버깅 플러그인
-            chii(env["VITE_CHII_HOST"], Number(env["VITE_CHII_PORT"])),
+            // 원격 디버깅 플러그인 (안전한 변수로 교체)
+            chii(chiiHost, chiiPort),
         ],
         server: {
             // 모든 호스트에서 접근 허용
