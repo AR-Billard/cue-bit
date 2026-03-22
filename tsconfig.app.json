@@ -5,7 +5,7 @@
         "useDefineForClassFields": true,
         "lib": ["ES2022", "DOM", "DOM.Iterable"],
         "module": "ESNext",
-        "types": ["vite/client"],
+        "types": ["vite/client", "dom-mediacapture-transform"],
         "skipLibCheck": true,
 
         /* Bundler mode */
@@ -23,6 +23,10 @@
         "erasableSyntaxOnly": true,
         "noFallthroughCasesInSwitch": true,
         "noUncheckedSideEffectImports": true,
+
+        "paths": {
+            "@/*": ["./src/*"],
+        },
     },
     "include": ["src"],
 }
