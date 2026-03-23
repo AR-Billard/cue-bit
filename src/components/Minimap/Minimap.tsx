@@ -2,6 +2,7 @@ import { forwardRef } from "react";
 import styles from "./Minimap.module.css";
 
 interface MinimapProps {
+	/** true면 선명하게, false면 흐리게 표시 (AR 모드 꺼져있을 때 흐림) */
 	visible: boolean;
 }
 

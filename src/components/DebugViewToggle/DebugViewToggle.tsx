@@ -2,7 +2,9 @@ import type { DebugView } from "@/lib/cuebit";
 import styles from "./DebugViewToggle.module.css";
 
 interface DebugViewToggleProps {
+	/** 현재 선택된 디버그 뷰 */
 	current: DebugView;
+	/** 뷰 변경 핸들러 */
 	onChange: (view: DebugView) => void;
 }
 

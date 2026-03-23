@@ -3,7 +3,9 @@ import styles from "./ModeToggle.module.css";
 type BilliardMode = "3구" | "4구";
 
 interface ModeToggleProps {
+	/** 현재 선택된 당구 모드 */
 	mode: BilliardMode;
+	/** 모드 변경 핸들러 */
 	onChange: (mode: BilliardMode) => void;
 }
 
