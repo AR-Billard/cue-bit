@@ -1,22 +1,16 @@
 import { useRef, useCallback, useState } from "react";
 import type { PhysicsResult } from "@/types/physics";
+import type { DebugView } from "@/lib/cuebit";
 import useCamera from "@/hooks/useCamera";
 import useAR from "@/hooks/useAR";
 import ARButton from "@/components/ARButton/ARButton";
 import ModeToggle from "@/components/ModeToggle/ModeToggle";
 import Minimap from "@/components/Minimap/Minimap";
+import DebugViewToggle from "@/components/DebugViewToggle/DebugViewToggle";
 import styles from "./Main.module.css";
 
 type BilliardMode = "3구" | "4구";
 
-/**
- * 메인 페이지.
- * 이 파일은 "조립"만 담당해요.
- *
- * - 카메라/OpenCV 로직  → useCamera 훅
- * - AR 오버레이/터치    → useAR 훅
- * - UI 컴포넌트들       → ARButton, ModeToggle, Minimap
- */
 function Main() {
     const videoCanvasRef = useRef<HTMLCanvasElement>(null);
     const arCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,16 +18,14 @@ function Main() {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const [mode, setMode] = useState<BilliardMode>("4구");
+    const [debugView, setDebugView] = useState<DebugView>("original");
 
-    // AR 훅: 오버레이 그리기 + 터치 처리
     const { isARMode, toggleARMode, handlePointerEvent, drawAR } = useAR({
         arCanvasRef,
         minimapCanvasRef,
         containerRef,
     });
 
-    // 매 프레임마다 카메라 훅에서 결과를 받아 AR 훅으로 전달
-    // TODO: 물리엔진 완성되면 useCamera 안의 TODO 부분만 교체하면 됩니다
     const handleFrame = useCallback(
         (result: PhysicsResult | null) => {
             drawAR(result);
@@ -41,9 +33,9 @@ function Main() {
         [drawAR],
     );
 
-    // 카메라 훅: 프레임 캡처 + OpenCV 공 감지
     const { cvLoaded, errorMsg } = useCamera({
         videoCanvasRef,
+        debugView,
         onFrame: handleFrame,
     });
 
@@ -93,6 +85,7 @@ function Main() {
             {/* 레이어 7: 하단 컨트롤 패널 */}
             <div className={styles.controls}>
                 <ModeToggle mode={mode} onChange={setMode} />
+                <DebugViewToggle current={debugView} onChange={setDebugView} />
                 <ARButton isARMode={isARMode} onClick={toggleARMode} />
             </div>
         </div>
