@@ -1,14 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { RefObject } from "react";
 import createFrameCapture from "@/lib/capture";
 import { getOpenCv } from "@/lib/opencv";
 import Cuebit from "@/lib/cuebit";
+import type { DebugView } from "@/lib/cuebit";
 import { todo } from "@/common";
 import type { PhysicsResult } from "@/types/physics";
 import logger from "@/lib/logger";
 
 interface UseCameraOptions {
     videoCanvasRef: RefObject<HTMLCanvasElement | null>;
+    debugView: DebugView;
     onFrame: (result: PhysicsResult | null) => void;
 }
 
@@ -21,12 +23,26 @@ interface UseCameraReturn {
  * 카메라 스트림을 열고, 매 프레임마다 OpenCV로 처리한 뒤
  * onFrame 콜백으로 PhysicsResult를 전달하는 훅.
  *
- * 현재 팀 레포의 Cuebit.process()는 Uint8ClampedArray를 반환합니다.
- * 공 감지 로직이 Cuebit에 추가되면 아래 TODO 부분을 교체하면 됩니다.
+ * debugView 값에 따라 화면에 표시되는 이미지가 바뀜:
+ *   original → 원본 카메라
+ *   hsv      → HSV 변환
+ *   mask     → 마스킹 결과
+ *   contour  → 컨투어 검출
  */
-function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraReturn {
+function useCamera({ videoCanvasRef, debugView, onFrame }: UseCameraOptions): UseCameraReturn {
     const [cvLoaded, setCvLoaded] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
+
+    // debugView, onFrame이 바뀌어도 프레임 루프를 재시작하지 않기 위해 ref로 관리
+    const debugViewRef = useRef<DebugView>(debugView);
+    useEffect(() => {
+        debugViewRef.current = debugView;
+    }, [debugView]);
+
+    const onFrameRef = useRef(onFrame);
+    useEffect(() => {
+        onFrameRef.current = onFrame;
+    }, [onFrame]);
 
     const createFrameDrawer = useCallback(
         (canvas: HTMLCanvasElement, width: number, height: number) => {
@@ -98,34 +114,34 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
                         layout: [{ offset: 0, stride: frameCapture.width * 4 }],
                     });
 
-                    // Cuebit으로 프레임 처리
-                    cuebit.process(buffer);
+                    // Cuebit으로 프레임 처리 — 단계별 이미지 + 공 위치 반환
+                    const { frames, ballPos } = cuebit.process(buffer);
 
-                    // 원본 카메라 영상을 화면에 표시
-                    drawer.draw(buffer);
+                    // 현재 선택된 디버그 뷰에 맞는 이미지를 화면에 표시
+                    drawer.draw(frames[debugViewRef.current]);
 
-                    // TODO: Cuebit에 공 감지 로직이 추가되면 여기서 결과를 받아서 처리
-                    // 예시:
-                    // const { ballPos } = cuebit.process(buffer);
-                    // if (!ballPos) {
-                    //     logger.debug("공 감지 실패 — 이번 프레임 스킵");
-                    //     onFrame(null);
-                    //     return;
-                    // }
-                    // logger.debug(`공 감지 성공 — x:${ballPos.x}, y:${ballPos.y}`);
-                    // const physicsResult: PhysicsResult = {
-                    //     trajectories: [{
-                    //         ballId: "red",
-                    //         path: [{ x: ballPos.x, y: ballPos.y }],
-                    //         cushionPoints: [],
-                    //     }],
-                    // };
-                    // onFrame(physicsResult);
+                    // 공이 감지되면 PhysicsResult 구성해서 전달
+                    if (!ballPos) {
+                        onFrameRef.current(null);
+                        return;
+                    }
 
-                    onFrame(null);
+                    logger.debug(`공 감지 — x:${ballPos.x.toFixed(0)}, y:${ballPos.y.toFixed(0)}`);
+
+                    // TODO: 물리엔진 완성되면 여기서 physicsEngine.simulate() 호출
+                    const tempResult: PhysicsResult = {
+                        trajectories: [{
+                            ballId: "red",
+                            path: [{ x: ballPos.x, y: ballPos.y }],
+                            cushionPoints: [],
+                        }],
+                    };
+                    onFrameRef.current(tempResult);
                 });
 
                 logger.info("프레임 루프 종료");
+                cuebit.destroy();
+                logger.debug("Cuebit 메모리 해제 완료");
             } catch (err) {
                 logger.error({ err }, "카메라 시작 에러");
                 setErrorMsg(
@@ -139,7 +155,7 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
             logger.info("카메라 스트림 종료 (컴포넌트 언마운트)");
             ac.abort();
         };
-    }, [createFrameDrawer, videoCanvasRef, onFrame]);
+    }, [createFrameDrawer, videoCanvasRef]); // onFrame, debugView는 ref로 관리하므로 의존성에서 제외
 
     return { cvLoaded, errorMsg };
 }
