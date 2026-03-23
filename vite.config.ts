@@ -48,7 +48,7 @@ export default defineConfig((config) => {
     const chiiPort = Number(env["VITE_CHII_PORT"]) || 8080;
 
     return {
-        base: '/AR_project/',
+        base: '/cue-bit/',
         plugins: [
             react(),
             // wasm 로딩 플러그인
