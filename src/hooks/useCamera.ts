@@ -5,6 +5,7 @@ import { getOpenCv } from "@/lib/opencv";
 import Cuebit from "@/lib/cuebit";
 import { todo } from "@/common";
 import type { PhysicsResult } from "@/types/physics";
+import logger from "@/lib/logger";
 
 interface UseCameraOptions {
     videoCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -53,6 +54,7 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
 
         const startCamera = async () => {
             try {
+                logger.info("카메라 스트림 요청 중...");
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: false,
                     video: {
@@ -61,9 +63,14 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
                         facingMode: { ideal: "environment" },
                     },
                 });
+                logger.info("카메라 스트림 획득 완료");
 
                 const [track] = stream.getVideoTracks();
                 const frameCapture = await createFrameCapture(ac.signal, track);
+                logger.debug(
+                    `프레임 캡처 생성 완료 — ${frameCapture.width}x${frameCapture.height}`,
+                );
+
                 const buffer = new Uint8ClampedArray(
                     frameCapture.width * frameCapture.height * 4,
                 );
@@ -76,18 +83,22 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
                     frameCapture.height,
                 );
 
+                logger.info("OpenCV 초기화 중...");
                 await getOpenCv();
                 setCvLoaded(true);
+                logger.info("OpenCV 초기화 완료");
 
                 const cuebit = new Cuebit(frameCapture.width, frameCapture.height);
+                logger.debug("Cuebit 인스턴스 생성 완료");
 
+                logger.info("프레임 루프 시작");
                 await frameCapture.on(async (frame) => {
                     await frame.copyTo(buffer, {
                         format: "RGBA",
                         layout: [{ offset: 0, stride: frameCapture.width * 4 }],
                     });
 
-                    // Cuebit으로 프레임 처리 (현재는 HSV 변환 결과 반환)
+                    // Cuebit으로 프레임 처리
                     cuebit.process(buffer);
 
                     // 원본 카메라 영상을 화면에 표시
@@ -96,7 +107,12 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
                     // TODO: Cuebit에 공 감지 로직이 추가되면 여기서 결과를 받아서 처리
                     // 예시:
                     // const { ballPos } = cuebit.process(buffer);
-                    // if (!ballPos) { onFrame(null); return; }
+                    // if (!ballPos) {
+                    //     logger.debug("공 감지 실패 — 이번 프레임 스킵");
+                    //     onFrame(null);
+                    //     return;
+                    // }
+                    // logger.debug(`공 감지 성공 — x:${ballPos.x}, y:${ballPos.y}`);
                     // const physicsResult: PhysicsResult = {
                     //     trajectories: [{
                     //         ballId: "red",
@@ -106,11 +122,12 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
                     // };
                     // onFrame(physicsResult);
 
-                    // 현재는 공 감지 없이 null 전달
                     onFrame(null);
                 });
+
+                logger.info("프레임 루프 종료");
             } catch (err) {
-                console.error("카메라 시작 에러:", err);
+                logger.error({ err }, "카메라 시작 에러");
                 setErrorMsg(
                     "카메라 또는 AI 엔진을 켜지 못했습니다. HTTPS 배포 환경에서 테스트해주세요.",
                 );
@@ -119,6 +136,7 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
 
         startCamera();
         return () => {
+            logger.info("카메라 스트림 종료 (컴포넌트 언마운트)");
             ac.abort();
         };
     }, [createFrameDrawer, videoCanvasRef, onFrame]);

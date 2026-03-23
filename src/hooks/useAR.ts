@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { RefObject } from "react";
 import type { PhysicsResult, Point } from "@/types/physics";
+import logger from "@/lib/logger";
 
 interface UseAROptions {
     arCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -59,7 +60,12 @@ function useAR({ arCanvasRef, minimapCanvasRef, containerRef }: UseAROptions): U
         setIsARMode((prev) => {
             const next = !prev;
             isARModeRef.current = next;
-            if (next) touchPosRef.current = null;
+            if (next) {
+                touchPosRef.current = null;
+                logger.info("AR 모드 시작");
+            } else {
+                logger.info("AR 모드 종료");
+            }
             return next;
         });
     }, []);
