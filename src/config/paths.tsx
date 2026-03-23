@@ -1,5 +1,5 @@
 export const paths = {
-    main: {
-        path: "/main",
-    },
+	main: {
+		path: "/main",
+	},
 } as const;

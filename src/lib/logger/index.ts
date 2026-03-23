@@ -14,22 +14,22 @@ import pino from "pino";
  *   개발 중엔 debug, 배포 시엔 info 이상만 출력
  */
 const logger = pino({
-    // 개발 환경이면 debug, 배포 환경이면 info
-    level: import.meta.env.DEV ? "debug" : "info",
-    browser: {
-        // 브라우저 환경에서 pino가 console을 사용하도록 설정
-        asObject: false,
-        serialize: false,
-        transmit: undefined,
-        write: {
-            trace: (msg) => console.debug("[TRACE]", msg),
-            debug: (msg) => console.debug("[DEBUG]", msg),
-            info:  (msg) => console.info("[INFO]", msg),
-            warn:  (msg) => console.warn("[WARN]", msg),
-            error: (msg) => console.error("[ERROR]", msg),
-            fatal: (msg) => console.error("[FATAL]", msg),
-        },
-    },
+	// 개발 환경이면 debug, 배포 환경이면 info
+	level: import.meta.env.DEV ? "debug" : "info",
+	browser: {
+		// 브라우저 환경에서 pino가 console을 사용하도록 설정
+		asObject: false,
+		serialize: false,
+		transmit: undefined,
+		write: {
+			trace: (msg) => console.debug("[TRACE]", msg),
+			debug: (msg) => console.debug("[DEBUG]", msg),
+			info: (msg) => console.info("[INFO]", msg),
+			warn: (msg) => console.warn("[WARN]", msg),
+			error: (msg) => console.error("[ERROR]", msg),
+			fatal: (msg) => console.error("[FATAL]", msg),
+		},
+	},
 });
 
 export default logger;

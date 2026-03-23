@@ -1,11 +1,11 @@
 import React from "react";
 
 interface AppProviderProps {
-    children: React.ReactNode;
+	children: React.ReactNode;
 }
 
 function AppProvider(props: AppProviderProps) {
-    return <>{props.children}</>;
+	return <>{props.children}</>;
 }
 
 export default AppProvider;

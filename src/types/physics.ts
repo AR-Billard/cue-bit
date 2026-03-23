@@ -12,16 +12,16 @@
 
 /** 2D 좌표 (탑뷰 좌표계 기준, 단위: px) */
 export interface Point {
-    x: number;
-    y: number;
+	x: number;
+	y: number;
 }
 
 /** 당구공 한 개의 상태 */
 export interface Ball {
-    /** 공의 현재 중심 좌표 */
-    position: Point;
-    /** 공의 반지름 (px) */
-    radius: number;
+	/** 공의 현재 중심 좌표 */
+	position: Point;
+	/** 공의 반지름 (px) */
+	radius: number;
 }
 
 // ─────────────────────────────────────────
@@ -30,31 +30,31 @@ export interface Ball {
 
 /** 스핀(회전) 정보 */
 export interface Spin {
-    /**
-     * 수평 스핀 (-1.0 ~ 1.0)
-     *  -1.0 = 최대 왼쪽 사이드,  1.0 = 최대 오른쪽 사이드
-     */
-    horizontal: number;
-    /**
-     * 수직 스핀 (-1.0 ~ 1.0)
-     *  -1.0 = 최대 아래 회전(드로),  1.0 = 최대 위 회전(팔로우)
-     */
-    vertical: number;
+	/**
+	 * 수평 스핀 (-1.0 ~ 1.0)
+	 *  -1.0 = 최대 왼쪽 사이드,  1.0 = 최대 오른쪽 사이드
+	 */
+	horizontal: number;
+	/**
+	 * 수직 스핀 (-1.0 ~ 1.0)
+	 *  -1.0 = 최대 아래 회전(드로),  1.0 = 최대 위 회전(팔로우)
+	 */
+	vertical: number;
 }
 
 /** 사용자가 설정한 타격 정보 */
 export interface StrokeInput {
-    /** 수구(흰 공)의 현재 위치 */
-    cueBall: Ball;
-    /** 타격 방향 (수구 → 목적구 방향의 단위벡터) */
-    direction: Point;
-    /**
-     * 타격 세기 (0.0 ~ 1.0)
-     *  0.0 = 가장 약하게,  1.0 = 가장 강하게
-     */
-    force: number;
-    /** 스핀 설정 (선택값 — 없으면 스핀 없음으로 처리) */
-    spin?: Spin;
+	/** 수구(흰 공)의 현재 위치 */
+	cueBall: Ball;
+	/** 타격 방향 (수구 → 목적구 방향의 단위벡터) */
+	direction: Point;
+	/**
+	 * 타격 세기 (0.0 ~ 1.0)
+	 *  0.0 = 가장 약하게,  1.0 = 가장 강하게
+	 */
+	force: number;
+	/** 스핀 설정 (선택값 — 없으면 스핀 없음으로 처리) */
+	spin?: Spin;
 }
 
 // ─────────────────────────────────────────
@@ -63,33 +63,33 @@ export interface StrokeInput {
 
 /** 공 한 개의 예측 이동 경로 */
 export interface BallTrajectory {
-    /** 어떤 공인지 구분하는 ID (예: "cue", "red", "yellow") */
-    ballId: string;
-    /**
-     * 이동 경로를 이루는 좌표 배열
-     * 순서대로 연결하면 예측 궤적선이 됨
-     * 예: [{x:100,y:200}, {x:150,y:180}, ...]
-     */
-    path: Point[];
-    /**
-     * 쿠션에 부딪힌 좌표들 (경로 중 반사가 일어난 지점)
-     * 프론트에서 반사 포인트 표시할 때 사용
-     */
-    cushionPoints: Point[];
+	/** 어떤 공인지 구분하는 ID (예: "cue", "red", "yellow") */
+	ballId: string;
+	/**
+	 * 이동 경로를 이루는 좌표 배열
+	 * 순서대로 연결하면 예측 궤적선이 됨
+	 * 예: [{x:100,y:200}, {x:150,y:180}, ...]
+	 */
+	path: Point[];
+	/**
+	 * 쿠션에 부딪힌 좌표들 (경로 중 반사가 일어난 지점)
+	 * 프론트에서 반사 포인트 표시할 때 사용
+	 */
+	cushionPoints: Point[];
 }
 
 /** 물리 엔진이 최종적으로 반환하는 결과값 */
 export interface PhysicsResult {
-    /** 각 공의 예측 궤적 배열 */
-    trajectories: BallTrajectory[];
-    /**
-     * 득점 여부 (선택값)
-     *  true = 이 타격으로 득점 예상
-     */
-    isScoring?: boolean;
-    /**
-     * 시뮬레이션 소요 시간 (ms) — 성능 측정용
-     * 물리엔진 팀이 채워주면 됩니다
-     */
-    simulationTimeMs?: number;
+	/** 각 공의 예측 궤적 배열 */
+	trajectories: BallTrajectory[];
+	/**
+	 * 득점 여부 (선택값)
+	 *  true = 이 타격으로 득점 예상
+	 */
+	isScoring?: boolean;
+	/**
+	 * 시뮬레이션 소요 시간 (ms) — 성능 측정용
+	 * 물리엔진 팀이 채워주면 됩니다
+	 */
+	simulationTimeMs?: number;
 }
