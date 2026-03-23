@@ -17,11 +17,11 @@ interface UseCameraReturn {
 }
 
 /**
- * 카메라 스트림을 열고, 매 프레임마다 OpenCV로 공 위치를 감지한 뒤
+ * 카메라 스트림을 열고, 매 프레임마다 OpenCV로 처리한 뒤
  * onFrame 콜백으로 PhysicsResult를 전달하는 훅.
  *
- * 현재는 Cuebit이 감지한 빨간 공 위치를 PhysicsResult 형태로 변환해서 넘깁니다.
- * 물리엔진이 완성되면 아래 TODO 부분만 교체하면 됩니다.
+ * 현재 팀 레포의 Cuebit.process()는 Uint8ClampedArray를 반환합니다.
+ * 공 감지 로직이 Cuebit에 추가되면 아래 TODO 부분을 교체하면 됩니다.
  */
 function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraReturn {
     const [cvLoaded, setCvLoaded] = useState(false);
@@ -37,7 +37,11 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
             }
             return {
                 draw: (data: Uint8ClampedArray<ArrayBuffer>) => {
-                    context.putImageData(new ImageData(data, canvas.width, canvas.height), 0, 0);
+                    context.putImageData(
+                        new ImageData(data, canvas.width, canvas.height),
+                        0,
+                        0,
+                    );
                 },
             };
         },
@@ -66,7 +70,11 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
 
                 const canvas: HTMLCanvasElement =
                     videoCanvasRef.current ?? todo("canvas가 없음");
-                const drawer = createFrameDrawer(canvas, frameCapture.width, frameCapture.height);
+                const drawer = createFrameDrawer(
+                    canvas,
+                    frameCapture.width,
+                    frameCapture.height,
+                );
 
                 await getOpenCv();
                 setCvLoaded(true);
@@ -79,34 +87,27 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
                         layout: [{ offset: 0, stride: frameCapture.width * 4 }],
                     });
 
-                    const { ballPos } = cuebit.process(buffer);
-                    drawer.draw(buffer);  // ← 원본 카메라 영상
+                    // Cuebit으로 프레임 처리 (현재는 HSV 변환 결과 반환)
+                    cuebit.process(buffer);
 
-                    // TODO: 물리엔진 완성 후 교체 지점
-                    // 지금은 Cuebit이 감지한 공 위치를 PhysicsResult 형태로 임시 변환
-                    // 물리엔진이 완성되면 ballPos를 물리엔진에 넘기고,
-                    // 물리엔진 결과를 그대로 onFrame에 넘기면 됩니다.
-                    //
+                    // 원본 카메라 영상을 화면에 표시
+                    drawer.draw(buffer);
+
+                    // TODO: Cuebit에 공 감지 로직이 추가되면 여기서 결과를 받아서 처리
                     // 예시:
-                    // const physicsResult = await physicsEngine.simulate(strokeInput);
+                    // const { ballPos } = cuebit.process(buffer);
+                    // if (!ballPos) { onFrame(null); return; }
+                    // const physicsResult: PhysicsResult = {
+                    //     trajectories: [{
+                    //         ballId: "red",
+                    //         path: [{ x: ballPos.x, y: ballPos.y }],
+                    //         cushionPoints: [],
+                    //     }],
+                    // };
                     // onFrame(physicsResult);
 
-                    if (!ballPos) {
-                        onFrame(null);
-                        return;
-                    }
-
-                    // 임시: 감지된 공 위치만으로 PhysicsResult 구성
-                    const tempResult: PhysicsResult = {
-                        trajectories: [
-                            {
-                                ballId: "red",
-                                path: [{ x: ballPos.x, y: ballPos.y }],
-                                cushionPoints: [],
-                            },
-                        ],
-                    };
-                    onFrame(tempResult);
+                    // 현재는 공 감지 없이 null 전달
+                    onFrame(null);
                 });
             } catch (err) {
                 console.error("카메라 시작 에러:", err);
@@ -117,7 +118,9 @@ function useCamera({ videoCanvasRef, onFrame }: UseCameraOptions): UseCameraRetu
         };
 
         startCamera();
-        return () => { ac.abort(); };
+        return () => {
+            ac.abort();
+        };
     }, [createFrameDrawer, videoCanvasRef, onFrame]);
 
     return { cvLoaded, errorMsg };
