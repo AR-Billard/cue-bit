@@ -7,25 +7,39 @@ import ARButton from "@/components/ARButton/ARButton";
 import ModeToggle from "@/components/ModeToggle/ModeToggle";
 import Minimap from "@/components/Minimap/Minimap";
 import DebugViewToggle from "@/components/DebugViewToggle/DebugViewToggle";
+import DevLog from "@/components/DevLog/DevLog";
 import styles from "./Main.module.css";
 
-type BilliardMode = "3구" | "4구";
+/** 당구 모드 타입 — ModeToggle과 공유 */
+export type BilliardMode = "3구" | "4구";
 
+/**
+ * 메인 페이지.
+ * 이 파일은 "조립"만 담당해요.
+ *
+ * - 카메라/OpenCV 로직  → useCamera 훅
+ * - AR 오버레이         → useAR 훅
+ * - UI 컴포넌트들       → ARButton, ModeToggle, Minimap, DebugViewToggle
+ * - 개발용 로그 패널    → DevLog (개발 환경에서만 표시)
+ */
 function Main() {
 	const videoCanvasRef = useRef<HTMLCanvasElement>(null);
 	const arCanvasRef = useRef<HTMLCanvasElement>(null);
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
-	const [mode, setMode] = useState<BilliardMode>("4구");
-	const [debugView, setDebugView] = useState<DebugView>("original");
+	const [mode, setMode] = useState<BilliardMode>("4구"); // 현재 당구 모드
+	const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
 
-	const { isARMode, toggleARMode, handlePointerEvent, drawAR } = useAR({
+	// AR 훅: 오버레이 그리기
+	const { isARMode, toggleARMode, drawAR } = useAR({
 		arCanvasRef,
 		minimapCanvasRef,
 		containerRef,
 	});
 
+	// 매 프레임마다 카메라 훅에서 결과를 받아 AR 훅으로 전달
+	// TODO: 물리엔진 완성되면 useCamera 안의 TODO 부분만 교체하면 됩니다
 	const handleFrame = useCallback(
 		(result: PhysicsResult | null) => {
 			drawAR(result);
@@ -33,6 +47,7 @@ function Main() {
 		[drawAR],
 	);
 
+	// 카메라 훅: 프레임 캡처 + OpenCV 공 감지
 	const { cvLoaded, errorMsg } = useCamera({
 		videoCanvasRef,
 		debugView,
@@ -40,12 +55,7 @@ function Main() {
 	});
 
 	return (
-		<div
-			ref={containerRef}
-			className={styles.container}
-			onPointerDown={handlePointerEvent}
-			onPointerMove={handlePointerEvent}
-		>
+		<div ref={containerRef} className={styles.container}>
 			{/* 레이어 1: 카메라 영상 */}
 			<canvas ref={videoCanvasRef} className={styles.videoCanvas} />
 
@@ -88,6 +98,9 @@ function Main() {
 				<DebugViewToggle current={debugView} onChange={setDebugView} />
 				<ARButton isARMode={isARMode} onClick={toggleARMode} />
 			</div>
+
+			{/* 레이어 8: 개발용 로그 패널 (개발 환경에서만 표시) */}
+			<DevLog />
 		</div>
 	);
 }

@@ -1,6 +1,5 @@
+import type { BilliardMode } from "@/app/routes/main";
 import styles from "./ModeToggle.module.css";
-
-type BilliardMode = "3구" | "4구";
 
 interface ModeToggleProps {
 	/** 현재 선택된 당구 모드 */

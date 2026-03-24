@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { RefObject } from "react";
-import type { PhysicsResult, Point } from "@/types/physics";
+import type { PhysicsResult } from "@/types/physics";
 import logger from "@/lib/logger";
 
 interface UseAROptions {
@@ -12,7 +12,6 @@ interface UseAROptions {
 interface UseARReturn {
 	isARMode: boolean;
 	toggleARMode: () => void;
-	handlePointerEvent: (e: React.PointerEvent<HTMLDivElement>) => void;
 	drawAR: (result: PhysicsResult | null) => void;
 }
 
@@ -22,15 +21,14 @@ const BALL_COLORS: Record<string, string> = {
 	red: "#ff4757", // 적구 — 빨간색
 	yellow: "#ffd700", // 황구 — 노란색
 };
-const FALLBACK_COLOR = "#00e5ff";
+const FALLBACK_COLOR = "#00e5ff"; // 지정되지 않은 공 색상
 
 function getBallColor(ballId: string): string {
 	return BALL_COLORS[ballId] ?? FALLBACK_COLOR;
 }
 
 /**
- * AR 오버레이(궤적선, 쿠션 반사점, 미니맵)를 그리고,
- * 터치/마우스 이벤트로 수구 위치를 설정하는 훅.
+ * AR 오버레이(궤적선, 쿠션 반사점, 미니맵)를 그리는 훅.
  *
  * drawAR()에 PhysicsResult를 넘기면 모든 공의 궤적을 화면에 그려줍니다.
  * 물리엔진이 완성되기 전까지는 null을 넘기면 됩니다.
@@ -43,10 +41,7 @@ function useAR({
 	const [isARMode, setIsARMode] = useState(false);
 	const isARModeRef = useRef(false);
 
-	// 사용자가 화면을 터치한 좌표 (수구 위치)
-	const touchPosRef = useRef<Point | null>(null);
-
-	// 캔버스 크기를 컨테이너에 맞게 조정
+	// 캔버스 크기를 컨테이너에 맞게 조정 (화면 회전, 리사이즈 대응)
 	useEffect(() => {
 		const handleResize = () => {
 			const canvas = arCanvasRef.current;
@@ -64,24 +59,10 @@ function useAR({
 		setIsARMode((prev) => {
 			const next = !prev;
 			isARModeRef.current = next;
-			if (next) {
-				touchPosRef.current = null;
-				logger.info("AR 모드 시작");
-			} else {
-				logger.info("AR 모드 종료");
-			}
+			logger.info(next ? "AR 모드 시작" : "AR 모드 종료");
 			return next;
 		});
 	}, []);
-
-	const handlePointerEvent = useCallback(
-		(e: React.PointerEvent<HTMLDivElement>) => {
-			const target = e.target as HTMLElement;
-			if (target.tagName !== "CANVAS" && target.tagName !== "DIV") return;
-			touchPosRef.current = { x: e.clientX, y: e.clientY };
-		},
-		[],
-	);
 
 	const drawAR = useCallback(
 		(result: PhysicsResult | null) => {
@@ -190,7 +171,7 @@ function useAR({
 		[arCanvasRef, minimapCanvasRef],
 	);
 
-	return { isARMode, toggleARMode, handlePointerEvent, drawAR };
+	return { isARMode, toggleARMode, drawAR };
 }
 
 export default useAR;

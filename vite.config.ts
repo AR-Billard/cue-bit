@@ -29,7 +29,7 @@ function chii(host: string, port: number): Plugin {
 				{
 					tag: "script",
 					attrs: {
-						src: `//${host}:${port}/target.js`,
+						src: `//${host}/target.js`,
 					},
 					injectTo: "head",
 				},
@@ -46,8 +46,14 @@ export default defineConfig((config) => {
 
 	return {
 		base: "/cue-bit/",
-		plugins: [react(), wasm(), tsconfigPaths(), chii(chiiHost, chiiPort)],
+		plugins: [
+			react(), // React 지원
+			wasm(), // WASM 로딩
+			tsconfigPaths(), // tsconfig paths 적용
+			chii(chiiHost, chiiPort), // 원격 디버깅
+		],
 		server: {
+			// 모든 호스트에서 접근 허용 (모바일 테스트 시 필요)
 			allowedHosts: true,
 		},
 	};
