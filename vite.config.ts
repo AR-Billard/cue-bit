@@ -45,12 +45,12 @@ export default defineConfig((config) => {
 	const chiiPort = Number(env["VITE_CHII_PORT"]) || 8080;
 
 	return {
-		base: "/cue-bit/",
+		base: env["VITE_BASE_PATH"] ?? "/",
 		plugins: [
 			react(), // React 지원
-			wasm(), // WASM 로딩
-			tsconfigPaths(), // tsconfig paths 적용
-			chii(chiiHost, chiiPort), // 원격 디버깅
+			wasm(), // WASM 로딩 (OpenCV 등)
+			tsconfigPaths(), // tsconfig의 paths 별칭 적용
+			chii(chiiHost, chiiPort), // 원격 디버깅 (모바일 테스트용)
 		],
 		server: {
 			// 모든 호스트에서 접근 허용 (모바일 테스트 시 필요)
