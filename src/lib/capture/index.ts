@@ -1,43 +1,82 @@
+import { measure, measureAsync, todo } from "@/common";
+
 /**
  * 프레임 캡처하는 유틸 생성
  * @param track
  * @returns
  */
 async function createFrameCapture(
-    signal: AbortSignal,
-    track: MediaStreamVideoTrack,
+	signal: AbortSignal,
+	track: MediaStreamVideoTrack,
+	width: number,
+	height: number,
 ) {
-    const processor = new MediaStreamTrackProcessor({
-        track,
-    });
-    const reader = processor.readable.getReader();
+	const processor = new MediaStreamTrackProcessor({
+		track,
+	});
+	const reader = processor.readable.getReader();
+	const canvas = new OffscreenCanvas(width, height);
+	const context =
+		canvas.getContext("2d", {
+			willReadFrequently: true,
+		}) ?? todo("Failed to get canvas context");
 
-    // 프레임 하나 읽어서 실제데이터 크기 계산
-    const { value: frame, done } = await reader.read();
-    if (done || !frame) {
-        throw new Error("Failed to read video frame");
-    }
-    const allocationSize = frame.allocationSize({ format: "RGBA" });
-    const [width, height] = [frame.codedWidth, frame.codedHeight];
-    frame.close();
+	const frame =
+		(await reader.read()).value ?? todo("Failed to read initial frame");
+	const frameWidth = frame.displayWidth;
+	const frameHeight = frame.displayHeight;
+	frame.close();
 
-    return {
-        width,
-        height,
-        allocationSize,
-        on: async (callback: (frame: VideoFrame) => Promise<void>) => {
-            while (!signal.aborted) {
-                const { value: frame, done } = await reader.read();
-                if (done) {
-                    frame?.close();
-                    break;
-                }
+	const scale = Math.min(width / frameWidth, height / frameHeight);
+	const scaledWidth = frameWidth * scale;
+	const scaledHeight = frameHeight * scale;
+	const offsetX = (width - scaledWidth) / 2;
+	const offsetY = (height - scaledHeight) / 2;
 
-                await callback(frame);
-                frame.close();
-            }
-        },
-    };
+	return {
+		on: async (callback: (frame: Uint8ClampedArray) => Promise<void>) => {
+			while (true) {
+				const { value: frame, done } = await measureAsync(
+					() => reader.read(),
+					"Read Frame",
+				);
+
+				if (signal.aborted || done) {
+					frame?.close();
+                    // return;
+					break;
+				}
+
+				measure(
+					() => (context.fillStyle = "rgb(114, 114, 114)"),
+					"Fill Style Set",
+				);
+				measure(() => context.fillRect(0, 0, width, height), "Fill Rect");
+				measure(
+					() =>
+						context.drawImage(
+							frame,
+							0,
+							0,
+							frameWidth,
+							frameHeight,
+							offsetX,
+							offsetY,
+							scaledWidth,
+							scaledHeight,
+						),
+					"Draw Image",
+				);
+				const data = measure(
+					() => context.getImageData(0, 0, width, height),
+					"Get Image Data",
+				);
+
+				await measureAsync(() => callback(data.data), "Process Callback");
+				measure(() => frame.close(), "Close Frame");
+			}
+		},
+	};
 }
 
 export default createFrameCapture;

@@ -1,41 +1,68 @@
-import type { Mat } from "@techstark/opencv-js";
-import { getOpenCv } from "../opencv";
+import { measure, measureAsync } from "@/common";
+import type { InferenceSession } from "onnxruntime-web";
+import * as ort from "onnxruntime-web/webgpu";
 
-const { cv } = await getOpenCv();
+const session = await ort.InferenceSession.create("/best.onnx", {
+    executionProviders: ["wasm"],
+	// logSeverityLevel: 0,
+});
+
+console.log("session created", session);
+
+export interface Prediction {
+	dummy: string;
+}
+
+/**
+ * Float32Array를 내부적으로 재사용하여 Tensor로 변환하기 위한 클래스
+ */
+class TensorConverter {
+	private tensorData: Float32Array;
+
+	constructor(width: number, height: number) {
+		this.tensorData = new Float32Array(3 * width * height);
+	}
+
+	public convert(frame: Uint8ClampedArray): ort.Tensor {
+		// TODO: compute shader 사용해서 최적화
+		for (let i = 0; i < 640 * 640; i++) {
+			const ptr = i * 4;
+
+			this.tensorData[i] = frame[ptr] / 255.0;
+			this.tensorData[i + 640 * 640] = frame[ptr + 1] / 255.0;
+			this.tensorData[i + 2 * 640 * 640] = frame[ptr + 2] / 255.0;
+		}
+
+		return new ort.Tensor("float32", this.tensorData, [1, 3, 640, 640]);
+	}
+}
 
 /**
  * 이미지 프로세싱을 담당할 클래스
  */
 class Cuebit {
-    private mat: Mat;
-    private hsv: Mat;
-    private result: Uint8ClampedArray<ArrayBuffer>;
+	private tensorConverter: TensorConverter;
 
-    constructor(width: number, height: number) {
-        this.mat = new cv.Mat(height, width, cv.CV_8UC4);
-        this.hsv = new cv.Mat(height, width, cv.CV_8UC3);
-        this.result = new Uint8ClampedArray(width * height * 4);
-    }
+	constructor(width: number, height: number) {
+		this.tensorConverter = new TensorConverter(width, height);
+	}
 
-    public process(data: Uint8ClampedArray) {
-        this.mat.data.set(data);
+	public async process(
+		frame: Uint8ClampedArray,
+	): Promise<InferenceSession.OnnxValueMapType> {
+		const tensor = measure(
+			() => this.tensorConverter.convert(frame),
+			"Tensor Conversion",
+		);
 
-        cv.cvtColor(this.mat, this.hsv, cv.COLOR_RGBA2RGB);
-        cv.cvtColor(this.hsv, this.hsv, cv.COLOR_RGB2HSV);
+		const result = await measureAsync(() =>
+			session.run({
+				[session.inputNames[0]]: tensor,
+			}),
+		);
 
-        // HSV 3채널을 RGBA 4채널로 펴서 넣기 (H→R, S→G, V→B, A=255)
-        const hsv = this.hsv.data;
-        const result = this.result;
-        const pixels = hsv.length / 3;
-        for (let i = 0; i < pixels; i++) {
-            result[i * 4] = hsv[i * 3]; // H → R
-            result[i * 4 + 1] = hsv[i * 3 + 1]; // S → G
-            result[i * 4 + 2] = hsv[i * 3 + 2]; // V → B
-            result[i * 4 + 3] = 255; // A
-        }
-
-        return this.result;
-    }
+		return result;
+	}
 }
 
 export default Cuebit;
