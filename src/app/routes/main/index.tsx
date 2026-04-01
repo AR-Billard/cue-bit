@@ -70,7 +70,7 @@ function Main() {
 			console.log("Cuebit instance created:", cuebit);
 
 			await frameCapture.on(async (frame) => {
-				drawer.draw(frame as Uint8ClampedArray<ArrayBuffer>);
+				// drawer.draw(frame as Uint8ClampedArray<ArrayBuffer>);
 				const result = await measureAsync(
 					() => cuebit.process(frame),
 					"Process Frame",

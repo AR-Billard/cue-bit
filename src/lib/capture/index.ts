@@ -34,8 +34,9 @@ async function createFrameCapture(
 	const offsetY = (height - scaledHeight) / 2;
 
 	return {
-		on: async (callback: (frame: Uint8ClampedArray) => Promise<void>) => {
+		on: async (callback: (frame: VideoFrame) => Promise<void>) => {
 			while (true) {
+            // for (let i = 0; i < 1; i++) {
 				const { value: frame, done } = await measureAsync(
 					() => reader.read(),
 					"Read Frame",
@@ -43,37 +44,12 @@ async function createFrameCapture(
 
 				if (signal.aborted || done) {
 					frame?.close();
-                    // return;
+					// return;
 					break;
 				}
 
-				measure(
-					() => (context.fillStyle = "rgb(114, 114, 114)"),
-					"Fill Style Set",
-				);
-				measure(() => context.fillRect(0, 0, width, height), "Fill Rect");
-				measure(
-					() =>
-						context.drawImage(
-							frame,
-							0,
-							0,
-							frameWidth,
-							frameHeight,
-							offsetX,
-							offsetY,
-							scaledWidth,
-							scaledHeight,
-						),
-					"Draw Image",
-				);
-				const data = measure(
-					() => context.getImageData(0, 0, width, height),
-					"Get Image Data",
-				);
-
-				await measureAsync(() => callback(data.data), "Process Callback");
-				measure(() => frame.close(), "Close Frame");
+				await callback(frame);
+                frame.close();
 			}
 		},
 	};
