@@ -15,28 +15,28 @@ async function createFrameCapture(
 		track,
 	});
 	const reader = processor.readable.getReader();
-	const canvas = new OffscreenCanvas(width, height);
-	const context =
-		canvas.getContext("2d", {
-			willReadFrequently: true,
-		}) ?? todo("Failed to get canvas context");
 
-	const frame =
-		(await reader.read()).value ?? todo("Failed to read initial frame");
-	const frameWidth = frame.displayWidth;
-	const frameHeight = frame.displayHeight;
-	frame.close();
+	// const canvas = new OffscreenCanvas(width, height);
+	// const context =
+	// 	canvas.getContext("2d", {
+	// 		willReadFrequently: true,
+	// 	}) ?? todo("Failed to get canvas context");
 
-	const scale = Math.min(width / frameWidth, height / frameHeight);
-	const scaledWidth = frameWidth * scale;
-	const scaledHeight = frameHeight * scale;
-	const offsetX = (width - scaledWidth) / 2;
-	const offsetY = (height - scaledHeight) / 2;
+	// const frame =
+	// 	(await reader.read()).value ?? todo("Failed to read initial frame");
+	// const frameWidth = frame.displayWidth;
+	// const frameHeight = frame.displayHeight;
+	// frame.close();
+
+	// const scale = Math.min(width / frameWidth, height / frameHeight);
+	// const scaledWidth = frameWidth * scale;
+	// const scaledHeight = frameHeight * scale;
+	// const offsetX = (width - scaledWidth) / 2;
+	// const offsetY = (height - scaledHeight) / 2;
 
 	return {
 		on: async (callback: (frame: VideoFrame) => Promise<void>) => {
 			while (true) {
-            // for (let i = 0; i < 1; i++) {
 				const { value: frame, done } = await measureAsync(
 					() => reader.read(),
 					"Read Frame",

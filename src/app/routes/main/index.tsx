@@ -76,7 +76,7 @@ function Main() {
 					"Process Frame",
 				);
 
-				console.log(result);
+				// console.log(result);
 			});
 		})();
 
