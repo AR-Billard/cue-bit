@@ -1,5 +1,6 @@
-import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { defineConfig, loadEnv, type Plugin } from "vite";
+import vitePluginString from "vite-plugin-string";
 import wasm from "vite-plugin-wasm";
 import tsconfigPaths from "vite-tsconfig-paths";
 
@@ -53,6 +54,11 @@ export default defineConfig((config) => {
 			tsconfigPaths(),
 			// 원격 디버깅 플러그인
 			chii(env["VITE_CHII_HOST"], Number(env["VITE_CHII_PORT"])),
+			// wgsl을 string으로 로드하는 플러그인
+			// 이거 없이 ?raw로 로드하면 파일의 존재 여부를 체크하지 않아서 오타가 나도 에러가 안 뜸
+			vitePluginString({
+				include: "**/*.wgsl",
+			}),
 		],
 		server: {
 			// 모든 호스트에서 접근 허용

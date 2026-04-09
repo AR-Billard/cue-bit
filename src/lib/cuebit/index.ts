@@ -3,8 +3,8 @@ import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
 import { measure, measureAsync } from "@/common";
 import { getOpenCv } from "@/lib/opencv";
-import maskShader from "@/shaders/mask.wgsl?raw";
-import preprocessShader from "@/shaders/preprocess.wgsl?raw";
+import maskShader from "@/shaders/mask.wgsl";
+import preprocessShader from "@/shaders/preprocess.wgsl";
 
 /**
  * 버퍼 인덱스
