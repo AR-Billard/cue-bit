@@ -24,6 +24,8 @@
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedSideEffectImports": true,
 
+        // "allowArbitraryExtensions": true,
+
 		"paths": {
 			"@/*": ["./src/*"]
 		}

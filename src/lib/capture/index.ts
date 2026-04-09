@@ -23,15 +23,15 @@ async function createFrameCapture(
 				);
 
 				if (signal.aborted || done) {
-                    console.log("Frame capture stopped.");
-                    console.log("Aborted:", signal.aborted, "Done:", done);
+					console.log("Frame capture stopped.");
+					console.log("Aborted:", signal.aborted, "Done:", done);
 					frame?.close();
 					// return;
 					break;
 				}
 
 				await callback(frame);
-                frame.close();
+				frame.close();
 			}
 		},
 	};

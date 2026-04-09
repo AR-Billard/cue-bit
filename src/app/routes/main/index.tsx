@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
+import { measureAsync, todo } from "@/common";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
-import { measureAsync, todo } from "@/common";
 
 function Main() {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -75,17 +75,17 @@ function Main() {
 				);
 
 				if (result) {
-					// 첫 번째 마스크(160*160)만 흑백 이미지로 그리기
-					const maskSize = 160 * 160;
-					const rgba = new Uint8ClampedArray(maskSize * 4);
-					for (let i = 0; i < maskSize; i++) {
-						const v = Math.round(result[i] * 255);
-						rgba[i * 4 + 0] = v;
-						rgba[i * 4 + 1] = v;
-						rgba[i * 4 + 2] = v;
-						rgba[i * 4 + 3] = 255;
-					}
-					drawer.draw(rgba);
+					// // 첫 번째 마스크(160*160)만 흑백 이미지로 그리기
+					// const maskSize = 160 * 160;
+					// const rgba = new Uint8ClampedArray(maskSize * 4);
+					// for (let i = 0; i < maskSize; i++) {
+					// 	const v = Math.round(result[i] * 255);
+					// 	rgba[i * 4 + 0] = v;
+					// 	rgba[i * 4 + 1] = v;
+					// 	rgba[i * 4 + 2] = v;
+					// 	rgba[i * 4 + 3] = 255;
+					// }
+					// drawer.draw(rgba);
 				}
 			});
 		})();
