@@ -1,15 +1,17 @@
+import type { Point } from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
+import { measure, measureAsync } from "@/common";
+import { getOpenCv } from "@/lib/opencv";
+import maskShader from "@/shaders/mask.wgsl?raw";
+import preprocessShader from "@/shaders/preprocess.wgsl?raw";
 
 /**
  * 버퍼 인덱스
  */
 type BufferIndex = 0 | 1;
 
-const preprocessShader = await fetch("/preprocess.wgsl").then((res) =>
-	res.text(),
-);
-const maskShader = await fetch("/mask.wgsl").then((res) => res.text());
+const { cv } = await getOpenCv();
 const session = await ort.InferenceSession.create("/best16.onnx", {
 	executionProviders: ["webgpu"],
 	// logSeverityLevel: 0,
@@ -86,7 +88,7 @@ interface BufferSet {
 	/**
 	 * 마스크 이미지를 생성할 detection 인덱스 배열 버퍼
 	 */
-	rowIndexBuffer: GPUBuffer;
+	candidateRowBuffer: GPUBuffer;
 	/**
 	 * 마스크 생성 셰이더에서 사용할 Params 버퍼
 	 */
@@ -99,6 +101,65 @@ interface BufferSet {
 	 * 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼:
 	 */
 	maskReadBuffer: GPUBuffer;
+}
+
+function findLargestQuad(mask: Float32Array): Point[] | null {
+	// 첫 detection의 160*160만 사용
+	const W = 160,
+		H = 160;
+	const first = mask.subarray(0, W * H);
+
+	// Float32 → 0/255 binary Mat
+	const src = new cv.Mat(H, W, cv.CV_8UC1);
+	for (let i = 0; i < W * H; i++) {
+		src.data[i] = first[i] > 0.5 ? 255 : 0;
+	}
+
+	const contours = new cv.MatVector();
+	const hierarchy = new cv.Mat();
+	cv.findContours(
+		src,
+		contours,
+		hierarchy,
+		cv.RETR_EXTERNAL,
+		cv.CHAIN_APPROX_SIMPLE,
+	);
+
+	// 면적 가장 큰 컨투어
+	let maxArea = 0;
+	let maxIdx = -1;
+	for (let i = 0; i < contours.size(); i++) {
+		const area = cv.contourArea(contours.get(i));
+		if (area > maxArea) {
+			maxArea = area;
+			maxIdx = i;
+		}
+	}
+
+	let result: { x: number; y: number }[] | null = null;
+	if (maxIdx >= 0) {
+		const cnt = contours.get(maxIdx);
+		const approx = new cv.Mat();
+		const peri = cv.arcLength(cnt, true);
+		cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+		// 꼭짓점 4개일 때만 사각형으로 인정
+		if (approx.rows === 4) {
+			result = [];
+			for (let i = 0; i < 4; i++) {
+				result.push({
+					x: approx.data32S[i * 2],
+					y: approx.data32S[i * 2 + 1],
+				});
+			}
+		}
+		approx.delete();
+	}
+
+	src.delete();
+	contours.delete();
+	hierarchy.delete();
+	return result;
 }
 
 /**
@@ -283,7 +344,7 @@ class Cuebit {
 				entryPoint: "createMask",
 			},
 		});
-		const rowIndexBuffer = device.createBuffer({
+		const candidateRowBuffer = device.createBuffer({
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 			size: alignTo16(4 * 10),
 		});
@@ -320,7 +381,7 @@ class Cuebit {
 				{
 					binding: 2,
 					resource: {
-						buffer: rowIndexBuffer,
+						buffer: candidateRowBuffer,
 					},
 				},
 				{
@@ -352,7 +413,7 @@ class Cuebit {
 			pendingInference: null,
 			maskPipeline,
 			maskBindGroup,
-			rowIndexBuffer,
+			candidateRowBuffer: candidateRowBuffer,
 			paramsBuffer,
 			maskBuffer,
 			maskReadBuffer,
@@ -414,16 +475,8 @@ class Cuebit {
 		);
 		device.queue.submit([stagingCommandEncoder.finish()]);
 
-		await buffer.output0ReadBuffer.mapAsync(GPUMapMode.READ);
-
-		// unmap 때문에 slice를 사용하여 복사본을 만들어야 함
-		const data = new Float32Array(
-			buffer.output0ReadBuffer.getMappedRange().slice(0),
-		);
-		buffer.output0ReadBuffer.unmap();
-
 		device.queue.writeBuffer(
-			buffer.rowIndexBuffer,
+			buffer.candidateRowBuffer,
 			0,
 			new Uint32Array([0, -1, -1, -1, -1, -1, -1, -1, -1, -1]),
 		);
@@ -473,7 +526,10 @@ class Cuebit {
 
 		this.preprocessFrame(frame, currentBuffer);
 
-		const mask = await this.getMask(previousBuffer);
+		const mask = await measureAsync(
+			() => this.getMask(previousBuffer),
+			"Get Mask",
+		);
 
 		// 이전 추론이 완료된 후 현재 버퍼에 대해 추론 시작
 		currentBuffer.pendingInference = session.run(
@@ -487,7 +543,8 @@ class Cuebit {
 		);
 
 		if (mask) {
-            // TODO
+			const quad = measure(() => findLargestQuad(mask), "approx quad");
+			console.log("Largest quad:", quad);
 		}
 
 		// 버퍼 인덱스 업데이트
