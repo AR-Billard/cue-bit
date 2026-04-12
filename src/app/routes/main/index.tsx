@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
-import { measureAsync, todo } from "@/common";
+import { measure, todo } from "@/common";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
+import { device, session } from "@/lib/onnx";
+import createVisualizer from "@/lib/visualize";
 
 function Main() {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -62,31 +64,24 @@ function Main() {
 
 			const canvas: HTMLCanvasElement =
 				canvasRef.current ?? todo("canvas가 없음");
-			const drawer = createFrameDrawer(canvas, 160, 160);
+			const drawer = createVisualizer(canvas, device, 160, 160);
 
-			const cuebit = new Cuebit(640, 640);
+			const draw = () => {
+				drawer.draw(performance.now());
+				requestAnimationFrame(draw);
+			};
+
+			requestAnimationFrame(draw);
+
+			const cuebit = new Cuebit(device, session, 640, 640);
 			console.log("Cuebit instance created:", cuebit);
 
 			await frameCapture.on(async (frame) => {
 				// drawer.draw(frame as Uint8ClampedArray<ArrayBuffer>);
-				const result = await measureAsync(
+				const result = await measure(
 					() => cuebit.process(frame),
 					"Process Frame",
 				);
-
-				if (result) {
-					// // 첫 번째 마스크(160*160)만 흑백 이미지로 그리기
-					// const maskSize = 160 * 160;
-					// const rgba = new Uint8ClampedArray(maskSize * 4);
-					// for (let i = 0; i < maskSize; i++) {
-					// 	const v = Math.round(result[i] * 255);
-					// 	rgba[i * 4 + 0] = v;
-					// 	rgba[i * 4 + 1] = v;
-					// 	rgba[i * 4 + 2] = v;
-					// 	rgba[i * 4 + 3] = 255;
-					// }
-					// drawer.draw(rgba);
-				}
 			});
 		})();
 
@@ -109,7 +104,13 @@ function Main() {
 					flexDirection: "row",
 				}}
 			>
-				<canvas ref={canvasRef} style={{ width: "640px", height: "640px" }} />
+				<canvas
+					ref={canvasRef}
+					style={{
+						width: "100%",
+						aspectRatio: "1 / 1",
+					}}
+				/>
 			</div>
 		</div>
 	);

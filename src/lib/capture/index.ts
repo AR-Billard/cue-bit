@@ -1,4 +1,4 @@
-import { measure, measureAsync, todo } from "@/common";
+import { measure, todo } from "@/common";
 
 /**
  * 프레임 캡처하는 유틸 생성
@@ -17,7 +17,7 @@ async function createFrameCapture(
 	return {
 		on: async (callback: (frame: VideoFrame) => Promise<void>) => {
 			while (true) {
-				const { value: frame, done } = await measureAsync(
+				const { value: frame, done } = await measure(
 					() => reader.read(),
 					"Read Frame",
 				);

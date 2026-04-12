@@ -58,6 +58,7 @@ export default defineConfig((config) => {
 			// 이거 없이 ?raw로 로드하면 파일의 존재 여부를 체크하지 않아서 오타가 나도 에러가 안 뜸
 			vitePluginString({
 				include: "**/*.wgsl",
+				compress: false,
 			}),
 		],
 		server: {

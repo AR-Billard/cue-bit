@@ -1,10 +1,10 @@
 import type { Point } from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
-import { measure, measureAsync } from "@/common";
+import { alignTo16, measure } from "@/common";
 import { getOpenCv } from "@/lib/opencv";
-import maskShader from "@/shaders/mask.wgsl";
-import preprocessShader from "@/shaders/preprocess.wgsl";
+import maskShader from "./shaders/mask.wgsl";
+import preprocessShader from "./shaders/preprocess.wgsl";
 
 /**
  * 버퍼 인덱스
@@ -12,26 +12,9 @@ import preprocessShader from "@/shaders/preprocess.wgsl";
 type BufferIndex = 0 | 1;
 
 const { cv } = await getOpenCv();
-const session = await ort.InferenceSession.create("/best16.onnx", {
-	executionProviders: ["webgpu"],
-	// logSeverityLevel: 0,
-});
-const device = await ort.env.webgpu.device;
-
-const adapter = await navigator.gpu.requestAdapter();
-console.log(adapter?.info);
-
-console.log("session created", session);
 
 export interface Prediction {
 	dummy: string;
-}
-
-/**
- * 16배수 정렬
- */
-function alignTo16(size: number): number {
-	return Math.ceil(size / 16) * 16;
 }
 
 /**
@@ -84,11 +67,7 @@ interface BufferSet {
 	/**
 	 * 마스크 생성 셰이더에서 사용할 바인드 그룹
 	 */
-	maskBindGroup: GPUBindGroup;
-	/**
-	 * 마스크 이미지를 생성할 detection 인덱스 배열 버퍼
-	 */
-	candidateRowBuffer: GPUBuffer;
+	maskBindgroup: GPUBindGroup;
 	/**
 	 * 마스크 생성 셰이더에서 사용할 Params 버퍼
 	 */
@@ -103,16 +82,48 @@ interface BufferSet {
 	maskReadBuffer: GPUBuffer;
 }
 
-function findLargestQuad(mask: Float32Array): Point[] | null {
-	// 첫 detection의 160*160만 사용
-	const W = 160,
-		H = 160;
-	const first = mask.subarray(0, W * H);
+class MaskParams {
+	table: number;
 
+	constructor(table: number) {
+		this.table = table;
+	}
+
+	public toUint32Array(): Uint32Array {
+		return new Uint32Array([1, this.table]);
+	}
+}
+
+interface MaskResult {
+	masks: Float32Array[];
+	params: MaskParams;
+}
+
+/**
+ *
+ */
+function splitFloat32Array(
+	array: Float32Array,
+	chunkSize: number,
+): Float32Array[] {
+	const chunks: Float32Array[] = [];
+
+	for (let i = 0; i < array.length; i += chunkSize) {
+		chunks.push(array.subarray(i, i + chunkSize));
+	}
+
+	return chunks;
+}
+
+function findLargestQuad(
+	mask: Float32Array,
+	width: number,
+	height: number,
+): Point[] | null {
 	// Float32 → 0/255 binary Mat
-	const src = new cv.Mat(H, W, cv.CV_8UC1);
-	for (let i = 0; i < W * H; i++) {
-		src.data[i] = first[i] > 0.5 ? 255 : 0;
+	const src = new cv.Mat(height, width, cv.CV_8UC1);
+	for (let i = 0; i < width * height; i++) {
+		src.data[i] = mask[i] > 0.5 ? 255 : 0;
 	}
 
 	const contours = new cv.MatVector();
@@ -166,6 +177,8 @@ function findLargestQuad(mask: Float32Array): Point[] | null {
  * 전체 파이프라인 실행 클래스
  */
 class Cuebit {
+	private device: GPUDevice;
+	private session: InferenceSession;
 	private width: number;
 	private height: number;
 	private preprocessShaderModule: GPUShaderModule;
@@ -173,7 +186,14 @@ class Cuebit {
 	private buffers: [BufferSet, BufferSet];
 	private currentBufferIndex: BufferIndex = 0;
 
-	constructor(width: number, height: number) {
+	constructor(
+		device: GPUDevice,
+		session: InferenceSession,
+		width: number,
+		height: number,
+	) {
+		this.device = device;
+		this.session = session;
 		this.width = width;
 		this.height = height;
 		this.preprocessShaderModule = device.createShaderModule({
@@ -228,13 +248,6 @@ class Cuebit {
 					binding: 3,
 					visibility: GPUShaderStage.COMPUTE,
 					buffer: {
-						type: "uniform",
-					},
-				},
-				{
-					binding: 4,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
 						type: "storage",
 					},
 				},
@@ -263,8 +276,8 @@ class Cuebit {
 		preprocessBindGroupLayout: GPUBindGroupLayout,
 		maskBindGroupLayout: GPUBindGroupLayout,
 	): BufferSet {
-		const preprocessPipeline = device.createComputePipeline({
-			layout: device.createPipelineLayout({
+		const preprocessPipeline = this.device.createComputePipeline({
+			layout: this.device.createPipelineLayout({
 				bindGroupLayouts: [preprocessBindGroupLayout],
 			}),
 			compute: {
@@ -272,7 +285,7 @@ class Cuebit {
 				entryPoint: "hwc2chw",
 			},
 		});
-		const frameTexture = device.createTexture({
+		const frameTexture = this.device.createTexture({
 			size: [width, height],
 			format: "rgba8unorm",
 			usage:
@@ -280,14 +293,14 @@ class Cuebit {
 				GPUTextureUsage.TEXTURE_BINDING |
 				GPUTextureUsage.RENDER_ATTACHMENT,
 		});
-		const inputBuffer = device.createBuffer({
+		const inputBuffer = this.device.createBuffer({
 			usage:
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST |
 				GPUBufferUsage.STORAGE,
 			size: alignTo16(4 * 3 * width * height),
 		});
-		const bindGroup = device.createBindGroup({
+		const preprocessBindGroup = this.device.createBindGroup({
 			layout: preprocessBindGroupLayout,
 			entries: [
 				{
@@ -307,7 +320,7 @@ class Cuebit {
 			dims: [1, 3, height, width],
 		});
 
-		const output0Buffer = device.createBuffer({
+		const output0Buffer = this.device.createBuffer({
 			usage:
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST |
@@ -318,7 +331,7 @@ class Cuebit {
 			dataType: "float32",
 			dims: [1, 300, 38],
 		});
-		const output1Buffer = device.createBuffer({
+		const output1Buffer = this.device.createBuffer({
 			usage:
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST |
@@ -329,14 +342,14 @@ class Cuebit {
 			dataType: "float32",
 			dims: [1, 32, 160, 160],
 		});
-		const output0ReadBuffer = device.createBuffer({
+		const output0ReadBuffer = this.device.createBuffer({
 			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 			size: alignTo16(4 * 300 * 38),
 		});
 
 		// mask
-		const maskPipeline = device.createComputePipeline({
-			layout: device.createPipelineLayout({
+		const maskPipeline = this.device.createComputePipeline({
+			layout: this.device.createPipelineLayout({
 				bindGroupLayouts: [maskBindGroupLayout],
 			}),
 			compute: {
@@ -344,26 +357,19 @@ class Cuebit {
 				entryPoint: "createMask",
 			},
 		});
-		const candidateRowBuffer = device.createBuffer({
+		const paramsBuffer = this.device.createBuffer({
+			// candidateCount(1) + candidates(31)
+			size: alignTo16(4 * 32),
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-			size: alignTo16(4 * 10),
 		});
-		const paramsBuffer = device.createBuffer({
-			size: 16, // u32 1개지만 16바이트 정렬
-			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-		});
-		const maskBuffer = device.createBuffer({
+		const maskBuffer = this.device.createBuffer({
 			usage:
 				GPUBufferUsage.STORAGE |
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST,
 			size: alignTo16(4 * 10 * 160 * 160),
 		});
-		const maskReadBuffer = device.createBuffer({
-			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-			size: alignTo16(4 * 10 * 160 * 160),
-		});
-		const maskBindGroup = device.createBindGroup({
+		const maskBindgroup = this.device.createBindGroup({
 			layout: maskBindGroupLayout,
 			entries: [
 				{
@@ -381,28 +387,26 @@ class Cuebit {
 				{
 					binding: 2,
 					resource: {
-						buffer: candidateRowBuffer,
-					},
-				},
-				{
-					binding: 3,
-					resource: {
 						buffer: paramsBuffer,
 					},
 				},
 				{
-					binding: 4,
+					binding: 3,
 					resource: {
 						buffer: maskBuffer,
 					},
 				},
 			],
 		});
+		const maskReadBuffer = this.device.createBuffer({
+			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+			size: alignTo16(4 * 10 * 160 * 160),
+		});
 
 		return {
-			preprocessPipeline: preprocessPipeline,
+			preprocessPipeline,
 			frameTexture,
-			preprocessBindGroup: bindGroup,
+			preprocessBindGroup,
 			inputBuffer,
 			inputTensor,
 			output0Buffer,
@@ -412,8 +416,7 @@ class Cuebit {
 			output0ReadBuffer,
 			pendingInference: null,
 			maskPipeline,
-			maskBindGroup,
-			candidateRowBuffer: candidateRowBuffer,
+			maskBindgroup,
 			paramsBuffer,
 			maskBuffer,
 			maskReadBuffer,
@@ -428,13 +431,14 @@ class Cuebit {
 		this.copyFrameToTexture(frame, buffer);
 
 		// 프레임 전처리
-		const commandEncoder = device.createCommandEncoder();
+		const commandEncoder = this.device.createCommandEncoder();
 		this.hwc2chw(commandEncoder, buffer);
-		device.queue.submit([commandEncoder.finish()]);
+		this.device.queue.submit([commandEncoder.finish()]);
 	}
 
 	private copyFrameToTexture(frame: VideoFrame, buffer: BufferSet): void {
-		device.queue.copyExternalImageToTexture(
+		// NOTE: importExternalTexture 고려
+		this.device.queue.copyExternalImageToTexture(
 			{
 				source: frame,
 			},
@@ -456,16 +460,20 @@ class Cuebit {
 		pass.end();
 	}
 
-	private async getMask(buffer: BufferSet): Promise<Float32Array | null> {
-		// 프레임 추론 결과 대기
+	private getMaskParams(detections: Float32Array): MaskParams {
+		// TODO:
+		return new MaskParams(0);
+	}
+
+	private async getMask(buffer: BufferSet): Promise<MaskResult | null> {
+		// buffer의 프레임 추론 결과 대기
 		if (buffer.pendingInference == null) {
 			return null;
 		}
+		await measure(() => buffer.pendingInference, "Pending Inference");
 
-		await buffer.pendingInference;
-
-		// 이젠 프레임 추론 결과를 staging 버퍼로 복사
-		const stagingCommandEncoder = device.createCommandEncoder();
+		// buffer의 추론 결과를 staging 버퍼로 복사
+		const stagingCommandEncoder = this.device.createCommandEncoder();
 		stagingCommandEncoder.copyBufferToBuffer(
 			buffer.output0Buffer,
 			0,
@@ -473,24 +481,34 @@ class Cuebit {
 			0,
 			4 * 300 * 38,
 		);
-		device.queue.submit([stagingCommandEncoder.finish()]);
+		this.device.queue.submit([stagingCommandEncoder.finish()]);
 
-		device.queue.writeBuffer(
-			buffer.candidateRowBuffer,
-			0,
-			new Uint32Array([0, -1, -1, -1, -1, -1, -1, -1, -1, -1]),
+		await buffer.output0ReadBuffer.mapAsync(GPUMapMode.READ);
+		const detections = new Float32Array(
+			buffer.output0ReadBuffer.getMappedRange().slice(0),
 		);
-		device.queue.writeBuffer(buffer.paramsBuffer, 0, new Uint32Array([10]));
+		buffer.output0ReadBuffer.unmap();
 
-		const commandEncoder = device.createCommandEncoder();
-		const pass = commandEncoder.beginComputePass();
-		pass.setPipeline(buffer.maskPipeline);
-		pass.setBindGroup(0, buffer.maskBindGroup);
-		pass.dispatchWorkgroups(Math.ceil(160 / 16), Math.ceil(160 / 16));
-		pass.end();
-		device.queue.submit([commandEncoder.finish()]);
+		// 마스크 이미지를 만들 detections 인덱스 선택
+		const params = this.getMaskParams(detections);
 
-		const maskStagingCommandEncoder = device.createCommandEncoder();
+		//
+		this.device.queue.writeBuffer(
+			buffer.paramsBuffer,
+			0,
+			params.toUint32Array(),
+		);
+
+		const commandEncoder = this.device.createCommandEncoder();
+		const maskPass = commandEncoder.beginComputePass();
+		maskPass.setPipeline(buffer.maskPipeline);
+		maskPass.setBindGroup(0, buffer.maskBindgroup);
+		maskPass.dispatchWorkgroups(Math.ceil(160 / 16), Math.ceil(160 / 16));
+		maskPass.end();
+		this.device.queue.submit([commandEncoder.finish()]);
+
+		// TODO: maskCommandEncoder와 stagingCommandEncoder를 하나의 커맨드 인코더로 합쳐서 해도 될듯
+		const maskStagingCommandEncoder = this.device.createCommandEncoder();
 		maskStagingCommandEncoder.copyBufferToBuffer(
 			buffer.maskBuffer,
 			0,
@@ -499,22 +517,26 @@ class Cuebit {
 			// 4 byte * 10개 detection * 160 * 160
 			4 * 10 * 160 * 160,
 		);
-		device.queue.submit([maskStagingCommandEncoder.finish()]);
+		this.device.queue.submit([maskStagingCommandEncoder.finish()]);
 
 		await buffer.maskReadBuffer.mapAsync(GPUMapMode.READ);
 
-		const maskImage = new Float32Array(
-			buffer.maskReadBuffer.getMappedRange().slice(0),
+		const masks = splitFloat32Array(
+			new Float32Array(buffer.maskReadBuffer.getMappedRange().slice(0)),
+			160 * 160,
 		);
 		buffer.maskReadBuffer.unmap();
 
-		return maskImage;
+		return {
+			masks,
+			params,
+		};
 	}
 
 	/**
 	 *
 	 */
-	public async process(frame: VideoFrame): Promise<Float32Array | null> {
+	public async process(frame: VideoFrame) {
 		// 이전 버퍼 인덱스 계산
 		const previousBufferIndex = 1 - this.currentBufferIndex;
 
@@ -526,31 +548,43 @@ class Cuebit {
 
 		this.preprocessFrame(frame, currentBuffer);
 
-		const mask = await measureAsync(
+		const maskResult = await measure(
 			() => this.getMask(previousBuffer),
 			"Get Mask",
 		);
 
 		// 이전 추론이 완료된 후 현재 버퍼에 대해 추론 시작
-		currentBuffer.pendingInference = session.run(
+		currentBuffer.pendingInference = this.session.run(
 			{
-				[session.inputNames[0]]: currentBuffer.inputTensor,
+				[this.session.inputNames[0]]: currentBuffer.inputTensor,
 			},
 			{
-				[session.outputNames[0]]: currentBuffer.output0Tensor,
-				[session.outputNames[1]]: currentBuffer.output1Tensor,
+				[this.session.outputNames[0]]: currentBuffer.output0Tensor,
+				[this.session.outputNames[1]]: currentBuffer.output1Tensor,
 			},
 		);
 
-		if (mask) {
-			const quad = measure(() => findLargestQuad(mask), "approx quad");
-			console.log("Largest quad:", quad);
-		}
+		const quad = measure(
+			() =>
+				maskResult !== null
+					? findLargestQuad(maskResult.masks[maskResult.params.table], 160, 160)
+					: null,
+			"Find Largest Quad",
+		);
+
+		console.log(quad);
+
+		const result =
+			maskResult === null
+				? null
+				: {
+						frame: previousBuffer.frameTexture,
+					};
 
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
 
-		return mask;
+		return result;
 	}
 }
 
