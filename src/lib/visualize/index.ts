@@ -1,5 +1,4 @@
-import { alignTo16, todo } from "@/common";
-import visuialzeShader from "./shaders/visualize.wgsl";
+import { todo } from "@/common";
 
 function createVisualizer(
 	canvas: HTMLCanvasElement,
@@ -14,84 +13,21 @@ function createVisualizer(
 	context.configure({
 		device,
 		format: "rgba8unorm",
-	});
-
-	const uniformBuffer = device.createBuffer({
-		size: alignTo16(4 * 3),
-		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-	});
-	const bindgroupLayout = device.createBindGroupLayout({
-		entries: [
-			{
-				binding: 0,
-				visibility: GPUShaderStage.FRAGMENT,
-				buffer: {
-					type: "uniform",
-				},
-			},
-		],
-	});
-	const pipeline = device.createRenderPipeline({
-		layout: device.createPipelineLayout({
-			bindGroupLayouts: [bindgroupLayout],
-		}),
-		vertex: {
-			module: device.createShaderModule({
-				code: visuialzeShader,
-			}),
-			entryPoint: "vs_main",
-		},
-		fragment: {
-			module: device.createShaderModule({
-				code: visuialzeShader,
-			}),
-			entryPoint: "fs_main",
-			targets: [
-				{
-					format: "rgba8unorm",
-				},
-			],
-		},
-		primitive: {
-			topology: "triangle-list",
-		},
-	});
-	const bindgroup = device.createBindGroup({
-		layout: bindgroupLayout,
-		entries: [
-			{
-				binding: 0,
-				resource: {
-					buffer: uniformBuffer,
-				},
-			},
-		],
+		usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 	});
 
 	return {
-		draw: (time: number) => {
+		draw: (frameTexture: GPUTexture) => {
 			const commandEncoder = device.createCommandEncoder();
-			const textureView = context.getCurrentTexture().createView();
-			const renderPass = commandEncoder.beginRenderPass({
-				colorAttachments: [
-					{
-						view: textureView,
-						loadOp: "clear",
-						storeOp: "store",
-					},
-				],
-			});
-			renderPass.setPipeline(pipeline);
-			renderPass.setBindGroup(0, bindgroup);
-			renderPass.draw(3, 1, 0, 0);
-			renderPass.end();
-
-			device.queue.writeBuffer(
-				uniformBuffer,
-				0,
-				new Float32Array([time, width, height]),
+			commandEncoder.copyTextureToTexture(
+				{
+					texture: frameTexture,
+				},
+				{
+					texture: context.getCurrentTexture(),
+				},
+				[width, height],
 			);
-
 			device.queue.submit([commandEncoder.finish()]);
 		},
 	};

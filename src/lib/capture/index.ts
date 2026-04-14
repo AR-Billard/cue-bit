@@ -1,4 +1,4 @@
-import { measure, todo } from "@/common";
+import { measure } from "@/common";
 
 /**
  * 프레임 캡처하는 유틸 생성

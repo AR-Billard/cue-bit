@@ -1,21 +1,14 @@
-import type { Point } from "@techstark/opencv-js";
+import cv from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
 import { alignTo16, measure } from "@/common";
-import { getOpenCv } from "@/lib/opencv";
 import maskShader from "./shaders/mask.wgsl";
 import preprocessShader from "./shaders/preprocess.wgsl";
 
 /**
  * 버퍼 인덱스
  */
-type BufferIndex = 0 | 1;
-
-const { cv } = await getOpenCv();
-
-export interface Prediction {
-	dummy: string;
-}
+export type BufferIndex = 0 | 1;
 
 /**
  * 한 프레임 추론에 필요한 버퍼 세트
@@ -82,15 +75,33 @@ interface BufferSet {
 	maskReadBuffer: GPUBuffer;
 }
 
-class MaskParams {
-	table: number;
+interface DetectionMaskIndex {
+	readonly detection: Detection;
+	readonly index: number;
+}
 
-	constructor(table: number) {
-		this.table = table;
+class MaskParams {
+	public readonly table: DetectionMaskIndex | null;
+
+	constructor(table: Detection | null) {
+		const maskIndices: Detection[] = [];
+
+		this.table = table
+			? {
+					detection: table,
+					index: maskIndices.length,
+				}
+			: null;
 	}
 
-	public toUint32Array(): Uint32Array {
-		return new Uint32Array([1, this.table]);
+	public toByteLayout(): Uint32Array {
+		const indices: number[] = [];
+
+		if (this.table) {
+			indices.push(this.table.detection.index);
+		}
+
+		return new Uint32Array([indices.length, ...indices]);
 	}
 }
 
@@ -119,7 +130,7 @@ function findLargestQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
-): Point[] | null {
+): cv.Point[] | null {
 	// Float32 → 0/255 binary Mat
 	const src = new cv.Mat(height, width, cv.CV_8UC1);
 	for (let i = 0; i < width * height; i++) {
@@ -171,6 +182,30 @@ function findLargestQuad(
 	contours.delete();
 	hierarchy.delete();
 	return result;
+}
+
+class Detection {
+	public readonly index: number;
+	public readonly confidence: number;
+	public readonly classId: number;
+	public readonly coefficients: Float32Array;
+
+	constructor(index: number, chunk: Float32Array) {
+		this.index = index;
+		this.confidence = chunk[4];
+		this.classId = chunk[5];
+		this.coefficients = chunk.subarray(6);
+	}
+}
+
+function toDetections(detection: Float32Array, chunkSize: number): Detection[] {
+	const detections: Detection[] = [];
+
+	for (let i = 0; i < detection.length; i += chunkSize) {
+		detections.push(new Detection(i, detection.subarray(i, i + chunkSize)));
+	}
+
+	return detections;
 }
 
 /**
@@ -289,6 +324,7 @@ class Cuebit {
 			size: [width, height],
 			format: "rgba8unorm",
 			usage:
+				GPUTextureUsage.COPY_SRC |
 				GPUTextureUsage.COPY_DST |
 				GPUTextureUsage.TEXTURE_BINDING |
 				GPUTextureUsage.RENDER_ATTACHMENT,
@@ -460,9 +496,19 @@ class Cuebit {
 		pass.end();
 	}
 
-	private getMaskParams(detections: Float32Array): MaskParams {
-		// TODO:
-		return new MaskParams(0);
+	private getMaskParams(detections: Detection[]): MaskParams {
+		let table: Detection | null = null;
+
+		for (const detection of detections) {
+			// NOTE: 현재 모델은 2가 table임
+			if (detection.classId === 2) {
+				if (table === null || detection.confidence > table.confidence) {
+					table = detection;
+				}
+			}
+		}
+
+		return new MaskParams(table);
 	}
 
 	private async getMask(buffer: BufferSet): Promise<MaskResult | null> {
@@ -470,7 +516,7 @@ class Cuebit {
 		if (buffer.pendingInference == null) {
 			return null;
 		}
-		await measure(() => buffer.pendingInference, "Pending Inference");
+		await measure(() => buffer.pendingInference, "Pending Inference"); 
 
 		// buffer의 추론 결과를 staging 버퍼로 복사
 		const stagingCommandEncoder = this.device.createCommandEncoder();
@@ -484,8 +530,9 @@ class Cuebit {
 		this.device.queue.submit([stagingCommandEncoder.finish()]);
 
 		await buffer.output0ReadBuffer.mapAsync(GPUMapMode.READ);
-		const detections = new Float32Array(
-			buffer.output0ReadBuffer.getMappedRange().slice(0),
+		const detections = toDetections(
+			new Float32Array(buffer.output0ReadBuffer.getMappedRange().slice(0)),
+			38,
 		);
 		buffer.output0ReadBuffer.unmap();
 
@@ -496,7 +543,7 @@ class Cuebit {
 		this.device.queue.writeBuffer(
 			buffer.paramsBuffer,
 			0,
-			params.toUint32Array(),
+			params.toByteLayout(),
 		);
 
 		const commandEncoder = this.device.createCommandEncoder();
@@ -564,27 +611,40 @@ class Cuebit {
 			},
 		);
 
-		const quad = measure(
-			() =>
-				maskResult !== null
-					? findLargestQuad(maskResult.masks[maskResult.params.table], 160, 160)
-					: null,
-			"Find Largest Quad",
-		);
+		const getTablePoints = () => {
+			const table = maskResult?.params?.table;
 
-		console.log(quad);
+			if (!table) {
+				return null;
+			}
+
+			const mask = maskResult.masks[table.index];
+
+			return findLargestQuad(mask, 160, 160);
+		};
+
+		const table = measure(() => getTablePoints(), "Find Largest Quad");
 
 		const result =
 			maskResult === null
 				? null
 				: {
-						frame: previousBuffer.frameTexture,
+						frameTexture: previousBuffer.frameTexture,
+						table,
 					};
 
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
 
 		return result;
+	}
+
+	public getCurrentBufferIndex(): BufferIndex {
+		return this.currentBufferIndex;
+	}
+
+	public getBuffer(bufferIndex: BufferIndex): BufferSet {
+		return this.buffers[bufferIndex];
 	}
 }
 

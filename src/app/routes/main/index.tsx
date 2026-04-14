@@ -1,20 +1,27 @@
+import type { Point } from "@techstark/opencv-js";
 import { useCallback, useEffect, useRef } from "react";
 import { measure, todo } from "@/common";
 import createFrameCapture from "@/lib/capture";
-import Cuebit from "@/lib/cuebit";
+import Cuebit, { type BufferIndex } from "@/lib/cuebit";
 import { device, session } from "@/lib/onnx";
 import createVisualizer from "@/lib/visualize";
 
 function Main() {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
 	/**
 	 * 캔버스에 RGBA 데이터를 그리는 유틸 생성
 	 */
-	const createFrameDrawer = useCallback(
-		(canvas: HTMLCanvasElement, width: number, height: number) => {
-			canvas.width = width;
-			canvas.height = height;
+	const createOverlayDrawer = useCallback(
+		(
+			canvas: HTMLCanvasElement,
+			width: number,
+			height: number,
+			scale: number,
+		) => {
+			canvas.width = width * scale;
+			canvas.height = height * scale;
 			const context = canvas.getContext("2d");
 
 			if (!context) {
@@ -22,12 +29,22 @@ function Main() {
 			}
 
 			return {
-				draw: (data: Uint8ClampedArray<ArrayBuffer>) => {
-					context.putImageData(
-						new ImageData(data, canvas.width, canvas.height),
-						0,
-						0,
-					);
+				draw: (quad: Point[] | null) => {
+					context.clearRect(0, 0, width * scale, height * scale);
+
+					if (quad !== null) {
+						context.strokeStyle = "red";
+						context.lineWidth = 4;
+
+						context.beginPath();
+						for (let i = 0; i < 4; i++) {
+							const point = quad[i];
+							context.moveTo(point.x * scale, point.y * scale);
+							const nextPoint = quad[(i + 1) % 4];
+							context.lineTo(nextPoint.x * scale, nextPoint.y * scale);
+						}
+						context.stroke();
+					}
 				},
 			};
 		},
@@ -62,12 +79,24 @@ function Main() {
 			);
 			console.log("Frame capture created:", frameCapture);
 
-			const canvas: HTMLCanvasElement =
-				canvasRef.current ?? todo("canvas가 없음");
-			const drawer = createVisualizer(canvas, device, 160, 160);
+			const frameDrawer = createVisualizer(
+				canvasRef.current ?? todo("canvas가 없음"),
+				device,
+				640,
+				640,
+			);
+			const overlayDrawer = createOverlayDrawer(
+				overlayCanvasRef.current ?? todo("overlay canvas가 없음"),
+				160,
+				160,
+				4,
+			);
 
 			const draw = () => {
-				drawer.draw(performance.now());
+				const bufferIndex = (1 - cuebit.getCurrentBufferIndex()) as BufferIndex;
+				const buffer = cuebit.getBuffer(bufferIndex);
+				frameDrawer.draw(buffer.frameTexture);
+
 				requestAnimationFrame(draw);
 			};
 
@@ -82,13 +111,17 @@ function Main() {
 					() => cuebit.process(frame),
 					"Process Frame",
 				);
+
+				if (result) {
+					overlayDrawer.draw(result.table);
+				}
 			});
 		})();
 
 		return () => {
 			ac.abort();
 		};
-	}, [canvasRef, createFrameDrawer]);
+	}, [canvasRef, createOverlayDrawer]);
 
 	return (
 		<div
@@ -109,6 +142,15 @@ function Main() {
 					style={{
 						width: "100%",
 						aspectRatio: "1 / 1",
+						position: "absolute",
+					}}
+				/>
+				<canvas
+					ref={overlayCanvasRef}
+					style={{
+						width: "100%",
+						aspectRatio: "1 / 1",
+						position: "absolute",
 					}}
 				/>
 			</div>
