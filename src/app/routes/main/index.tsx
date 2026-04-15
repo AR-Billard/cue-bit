@@ -1,13 +1,16 @@
-import { useRef, useCallback, useState } from "react";
-import type { PhysicsResult } from "@/types/physics";
-import type { DebugView } from "@/lib/cuebit";
-import useCamera from "@/hooks/useCamera";
-import useAR from "@/hooks/useAR";
+import type { Point } from "@techstark/opencv-js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { measure, todo } from "@/common";
 import ARButton from "@/components/ARButton/ARButton";
-import ModeToggle from "@/components/ModeToggle/ModeToggle";
-import Minimap from "@/components/Minimap/Minimap";
 import DebugViewToggle from "@/components/DebugViewToggle/DebugViewToggle";
 import DevLog from "@/components/DevLog/DevLog";
+import Minimap from "@/components/Minimap/Minimap";
+import useAR from "@/hooks/useAR";
+import createFrameCapture from "@/lib/capture";
+import Cuebit, { type BufferIndex } from "@/lib/cuebit";
+import { device, session } from "@/lib/onnx";
+import createVisualizer from "@/lib/visualize";
+import type { PhysicsResult } from "@/types/physics";
 import styles from "./Main.module.css";
 
 /** 당구 모드 타입 — ModeToggle과 공유 */
@@ -23,12 +26,11 @@ export type BilliardMode = "3구" | "4구";
  * - 개발용 로그 패널    → DevLog (개발 환경에서만 표시)
  */
 function Main() {
-	const videoCanvasRef = useRef<HTMLCanvasElement>(null);
 	const arCanvasRef = useRef<HTMLCanvasElement>(null);
+	const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
-	const [mode, setMode] = useState<BilliardMode>("4구"); // 현재 당구 모드
 	const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
 
 	// AR 훅: 오버레이 그리기
@@ -38,26 +40,123 @@ function Main() {
 		containerRef,
 	});
 
-	// 매 프레임마다 카메라 훅에서 결과를 받아 AR 훅으로 전달
-	// TODO: 물리엔진 완성되면 useCamera 안의 TODO 부분만 교체하면 됩니다
-	const handleFrame = useCallback(
-		(result: PhysicsResult | null) => {
-			drawAR(result);
+	/**
+	 * 캔버스에 RGBA 데이터를 그리는 유틸 생성
+	 */
+	const createOverlayDrawer = useCallback(
+		(
+			canvas: HTMLCanvasElement,
+			width: number,
+			height: number,
+			scale: number,
+		) => {
+			canvas.width = width * scale;
+			canvas.height = height * scale;
+			const context = canvas.getContext("2d");
+
+			if (!context) {
+				throw new Error("Failed to get canvas context");
+			}
+
+			return {
+				draw: (quad: Point[] | null) => {
+					context.clearRect(0, 0, width * scale, height * scale);
+
+					if (quad !== null) {
+						context.strokeStyle = "red";
+						context.lineWidth = 4;
+
+						context.beginPath();
+						for (let i = 0; i < 4; i++) {
+							const point = quad[i];
+							context.moveTo(point.x * scale, point.y * scale);
+							const nextPoint = quad[(i + 1) % 4];
+							context.lineTo(nextPoint.x * scale, nextPoint.y * scale);
+						}
+						context.stroke();
+					}
+				},
+			};
 		},
-		[drawAR],
+		[],
 	);
 
-	// 카메라 훅: 프레임 캡처 + OpenCV 공 감지
-	const { cvLoaded, errorMsg } = useCamera({
-		videoCanvasRef,
-		debugView,
-		onFrame: handleFrame,
-	});
+	useEffect(() => {
+		// 비동기 작업을 중단하기 위한 AbortController
+		const ac = new AbortController();
+
+		(async () => {
+			// 카메라 스트림 가져오기
+			const stream = await navigator.mediaDevices.getUserMedia({
+				// 오디오 스트림은 사용하지 않음
+				audio: false,
+				video: {
+					width: 1000,
+					height: 1000,
+					facingMode: {
+						// 후면 카메라 사용
+						ideal: "environment",
+					},
+				},
+			});
+			// 비디오 트랙 가져오기
+			const [track] = stream.getVideoTracks();
+			// 프레임 캡처 유틸 생성
+			const frameCapture = await createFrameCapture(
+				// cleanup 시 프레임 캡처 중단을 위해 signal 전달
+				ac.signal,
+				track,
+			);
+			console.log("Frame capture created:", frameCapture);
+
+			const frameDrawer = createVisualizer(
+				arCanvasRef.current ?? todo("canvas가 없음"),
+				device,
+				640,
+				640,
+			);
+			const overlayDrawer = createOverlayDrawer(
+				overlayCanvasRef.current ?? todo("overlay canvas가 없음"),
+				160,
+				160,
+				4,
+			);
+
+			const draw = () => {
+				const bufferIndex = (1 - cuebit.getCurrentBufferIndex()) as BufferIndex;
+				const buffer = cuebit.getBuffer(bufferIndex);
+				frameDrawer.draw(buffer.frameTexture);
+
+				requestAnimationFrame(draw);
+			};
+
+			requestAnimationFrame(draw);
+
+			const cuebit = new Cuebit(device, session, 640, 640);
+			console.log("Cuebit instance created:", cuebit);
+
+			await frameCapture.on(async (frame) => {
+				// drawer.draw(frame as Uint8ClampedArray<ArrayBuffer>);
+				const result = await measure(
+					() => cuebit.process(frame),
+					"Process Frame",
+				);
+
+				if (result) {
+					overlayDrawer.draw(result.table);
+				}
+			});
+		})();
+
+		return () => {
+			ac.abort();
+		};
+	}, [arCanvasRef, createOverlayDrawer]);
 
 	return (
 		<div ref={containerRef} className={styles.container}>
 			{/* 레이어 1: 카메라 영상 */}
-			<canvas ref={videoCanvasRef} className={styles.videoCanvas} />
+			<canvas ref={arCanvasRef} className={styles.videoCanvas} />
 
 			{/* 레이어 2: OpenCV 로딩 오버레이 */}
 			{!cvLoaded && (
@@ -81,7 +180,7 @@ function Main() {
 					</h1>
 					<p className={styles.subtitle}>Real-time Trajectory</p>
 				</div>
-				{isARMode && cvLoaded && (
+				{isARMode && (
 					<div className={styles.analyzingBadge}>
 						<div className={styles.analyzingDot} />
 						<span className={styles.analyzingText}>실시간 분석 중...</span>
@@ -94,7 +193,6 @@ function Main() {
 
 			{/* 레이어 7: 하단 컨트롤 패널 */}
 			<div className={styles.controls}>
-				<ModeToggle mode={mode} onChange={setMode} />
 				<DebugViewToggle current={debugView} onChange={setDebugView} />
 				<ARButton isARMode={isARMode} onClick={toggleARMode} />
 			</div>
