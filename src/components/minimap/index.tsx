@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import styles from "./Minimap.module.css";
+import styles from "./index.module.css";
 
 interface MinimapProps {
 	/** true면 선명하게, false면 흐리게 표시 */

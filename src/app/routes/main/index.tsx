@@ -1,10 +1,8 @@
 import type { Point } from "@techstark/opencv-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { measure, todo } from "@/common";
-import ARButton from "@/components/ARButton/ARButton";
-import DebugViewToggle from "@/components/DebugViewToggle/DebugViewToggle";
-import DevLog from "@/components/DevLog/DevLog";
-import Minimap from "@/components/Minimap/Minimap";
+import ARButton from "@/components/ar-button";
+import Minimap from "@/components/minimap";
 import useAR from "@/hooks/useAR";
 import createFrameCapture from "@/lib/capture";
 import Cuebit, { type BufferIndex } from "@/lib/cuebit";
@@ -26,12 +24,12 @@ export type BilliardMode = "3구" | "4구";
  * - 개발용 로그 패널    → DevLog (개발 환경에서만 표시)
  */
 function Main() {
+	const videoCanvasRef = useRef<HTMLCanvasElement>(null);
 	const arCanvasRef = useRef<HTMLCanvasElement>(null);
-	const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
-	const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
+	// const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
 
 	// AR 훅: 오버레이 그리기
 	const { isARMode, toggleARMode, drawAR } = useAR({
@@ -116,7 +114,7 @@ function Main() {
 				640,
 			);
 			const overlayDrawer = createOverlayDrawer(
-				overlayCanvasRef.current ?? todo("overlay canvas가 없음"),
+				arCanvasRef.current ?? todo("overlay canvas가 없음"),
 				160,
 				160,
 				4,
@@ -156,18 +154,18 @@ function Main() {
 	return (
 		<div ref={containerRef} className={styles.container}>
 			{/* 레이어 1: 카메라 영상 */}
-			<canvas ref={arCanvasRef} className={styles.videoCanvas} />
+			<canvas ref={videoCanvasRef} className={styles.videoCanvas} />
 
 			{/* 레이어 2: OpenCV 로딩 오버레이 */}
-			{!cvLoaded && (
+			{/* {!cvLoaded && (
 				<div className={styles.loadingOverlay}>
 					<div className={styles.spinner} />
 					<p className={styles.loadingText}>AI 비전 엔진 로딩 중...</p>
 				</div>
-			)}
+			)} */}
 
 			{/* 레이어 3: 에러 메시지 */}
-			{errorMsg && <div className={styles.error}>{errorMsg}</div>}
+			{/* {errorMsg && <div className={styles.error}>{errorMsg}</div>} */}
 
 			{/* 레이어 4: AR 궤적 오버레이 */}
 			<canvas ref={arCanvasRef} className={styles.arCanvas} />
@@ -189,16 +187,16 @@ function Main() {
 			</div>
 
 			{/* 레이어 6: 미니맵 */}
-			<Minimap ref={minimapCanvasRef} visible={isARMode && cvLoaded} />
+			<Minimap ref={minimapCanvasRef} visible={isARMode} />
 
 			{/* 레이어 7: 하단 컨트롤 패널 */}
 			<div className={styles.controls}>
-				<DebugViewToggle current={debugView} onChange={setDebugView} />
+				{/* <DebugViewToggle current={debugView} onChange={setDebugView} /> */}
 				<ARButton isARMode={isARMode} onClick={toggleARMode} />
 			</div>
 
 			{/* 레이어 8: 개발용 로그 패널 (개발 환경에서만 표시) */}
-			<DevLog />
+			{/* <DevLog /> */}
 		</div>
 	);
 }
