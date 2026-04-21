@@ -12,8 +12,8 @@
 
 /** 2D 좌표 (탑뷰 좌표계 기준, 단위: px) */
 export interface Point {
-	x: number;
-	y: number;
+	readonly x: number;
+	readonly y: number;
 }
 
 /** 당구공 한 개의 상태 */

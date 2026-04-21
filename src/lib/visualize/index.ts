@@ -1,13 +1,13 @@
 import { todo } from "@/common";
+import type { FrameInfo } from '../capture';
 
 function createVisualizer(
 	canvas: HTMLCanvasElement,
 	device: GPUDevice,
-	width: number,
-	height: number,
+    frameInfo: FrameInfo,
 ) {
-	canvas.width = width;
-	canvas.height = height;
+	canvas.width = frameInfo.width;
+	canvas.height = frameInfo.height;
 	const context =
 		canvas.getContext("webgpu") ?? todo("Failed to get WebGPU context");
 	context.configure({
@@ -17,16 +17,16 @@ function createVisualizer(
 	});
 
 	return {
-		draw: (frameTexture: GPUTexture) => {
+		draw: (texture: GPUTexture) => {
 			const commandEncoder = device.createCommandEncoder();
 			commandEncoder.copyTextureToTexture(
 				{
-					texture: frameTexture,
+					texture: texture,
 				},
 				{
 					texture: context.getCurrentTexture(),
 				},
-				[width, height],
+				[texture.width, texture.height],
 			);
 			device.queue.submit([commandEncoder.finish()]);
 		},

@@ -1,15 +1,12 @@
-import type { Point } from "@techstark/opencv-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { measure, todo } from "@/common";
-import ARButton from "@/components/ar-button";
 import Minimap from "@/components/minimap";
-import useAR from "@/hooks/useAR";
+import OverlayToggleButton from "@/components/overlay-toggle-button";
 import createFrameCapture from "@/lib/capture";
-import Cuebit, { type BufferIndex } from "@/lib/cuebit";
-import { device, session } from "@/lib/onnx";
+import Cuebit from "@/lib/cuebit";
+import { device, onnx } from "@/lib/onnx";
 import createVisualizer from "@/lib/visualize";
-import type { PhysicsResult } from "@/types/physics";
-import styles from "./Main.module.css";
+import styles from "./index.module.css";
 
 /** 당구 모드 타입 — ModeToggle과 공유 */
 export type BilliardMode = "3구" | "4구";
@@ -25,31 +22,20 @@ export type BilliardMode = "3구" | "4구";
  */
 function Main() {
 	const videoCanvasRef = useRef<HTMLCanvasElement>(null);
-	const arCanvasRef = useRef<HTMLCanvasElement>(null);
+	const debugCanvasRef = useRef<HTMLCanvasElement>(null);
+	const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
 	// const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
 
-	// AR 훅: 오버레이 그리기
-	const { isARMode, toggleARMode, drawAR } = useAR({
-		arCanvasRef,
-		minimapCanvasRef,
-		containerRef,
-	});
+	const [isOverlayEnabled, setIsOverlayEnabled] = useState(false);
 
-	/**
-	 * 캔버스에 RGBA 데이터를 그리는 유틸 생성
-	 */
 	const createOverlayDrawer = useCallback(
-		(
-			canvas: HTMLCanvasElement,
-			width: number,
-			height: number,
-			scale: number,
-		) => {
-			canvas.width = width * scale;
-			canvas.height = height * scale;
+		(canvas: HTMLCanvasElement, width: number, height: number) => {
+			canvas.width = width;
+			canvas.height = height;
+
 			const context = canvas.getContext("2d");
 
 			if (!context) {
@@ -57,22 +43,14 @@ function Main() {
 			}
 
 			return {
-				draw: (quad: Point[] | null) => {
-					context.clearRect(0, 0, width * scale, height * scale);
-
-					if (quad !== null) {
-						context.strokeStyle = "red";
-						context.lineWidth = 4;
-
-						context.beginPath();
-						for (let i = 0; i < 4; i++) {
-							const point = quad[i];
-							context.moveTo(point.x * scale, point.y * scale);
-							const nextPoint = quad[(i + 1) % 4];
-							context.lineTo(nextPoint.x * scale, nextPoint.y * scale);
-						}
-						context.stroke();
-					}
+				draw: (
+					pass: (
+						context: CanvasRenderingContext2D,
+						width: number,
+						height: number,
+					) => void,
+				) => {
+					pass(context, canvas.width, canvas.height);
 				},
 			};
 		},
@@ -108,67 +86,104 @@ function Main() {
 			console.log("Frame capture created:", frameCapture);
 
 			const frameDrawer = createVisualizer(
-				arCanvasRef.current ?? todo("canvas가 없음"),
+				videoCanvasRef.current ?? todo("frame canvas가 없음"),
 				device,
-				640,
-				640,
+				frameCapture.frameInfo,
+			);
+			const debugDrawer = createVisualizer(
+				debugCanvasRef.current ?? todo("debug canvas가 없음"),
+				device,
+				{
+					width: 640,
+					height: 640,
+				},
 			);
 			const overlayDrawer = createOverlayDrawer(
-				arCanvasRef.current ?? todo("overlay canvas가 없음"),
-				160,
-				160,
-				4,
+				overlayCanvasRef.current ?? todo("overlay canvas가 없음"),
+				frameCapture.frameInfo.width,
+				frameCapture.frameInfo.height,
 			);
 
-			const draw = () => {
-				const bufferIndex = (1 - cuebit.getCurrentBufferIndex()) as BufferIndex;
-				const buffer = cuebit.getBuffer(bufferIndex);
-				frameDrawer.draw(buffer.frameTexture);
-
-				requestAnimationFrame(draw);
-			};
-
-			requestAnimationFrame(draw);
-
-			const cuebit = new Cuebit(device, session, 640, 640);
+			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
 			console.log("Cuebit instance created:", cuebit);
 
 			await frameCapture.on(async (frame) => {
-				// drawer.draw(frame as Uint8ClampedArray<ArrayBuffer>);
 				const result = await measure(
 					() => cuebit.process(frame),
 					"Process Frame",
 				);
 
-				if (result) {
-					overlayDrawer.draw(result.table);
+				const bufferIndex = cuebit.getCurrentBufferIndex();
+				const buffer = cuebit.getBuffer(bufferIndex);
+				frameDrawer.draw(buffer.frameTexture);
+				// debugDrawer.draw(buffer.resizedFrameTexture);
+
+				console.log(result);
+
+				if (!result) {
+					return;
 				}
+
+				overlayDrawer.draw((context, width, height) => {
+					const widthScaleFactor = width / 160;
+					const heightScaleFactor = height / 160;
+
+					context.clearRect(0, 0, width, height);
+
+					if (!result.quad) {
+						return;
+					}
+					context.strokeStyle = "red";
+					context.lineWidth = width * 0.01;
+					context.font = `${width * 0.1}px Arial`;
+					context.fillStyle = "red";
+					context.textAlign = "center";
+					context.textBaseline = "middle";
+
+					context.beginPath();
+					const points = [
+						result.quad.points.topLeft,
+						result.quad.points.bottomLeft,
+						result.quad.points.bottomRight,
+						result.quad.points.topRight,
+					];
+
+					for (let i = 0; i < 4; i++) {
+						const point = points[i];
+						context.fillText(
+							`${i}`,
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+						);
+						context.moveTo(
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+						);
+						const nextPoint = points[(i + 1) % 4];
+						context.lineTo(
+							nextPoint.x * widthScaleFactor,
+							nextPoint.y * heightScaleFactor,
+						);
+					}
+					context.stroke();
+				});
 			});
 		})();
 
 		return () => {
 			ac.abort();
 		};
-	}, [arCanvasRef, createOverlayDrawer]);
+	}, [overlayCanvasRef, createOverlayDrawer]);
 
 	return (
 		<div ref={containerRef} className={styles.container}>
-			{/* 레이어 1: 카메라 영상 */}
+			{/* 카메라 프레임 */}
 			<canvas ref={videoCanvasRef} className={styles.videoCanvas} />
 
-			{/* 레이어 2: OpenCV 로딩 오버레이 */}
-			{/* {!cvLoaded && (
-				<div className={styles.loadingOverlay}>
-					<div className={styles.spinner} />
-					<p className={styles.loadingText}>AI 비전 엔진 로딩 중...</p>
-				</div>
-			)} */}
+			<canvas ref={debugCanvasRef} className={styles.debugCanvas} />
 
-			{/* 레이어 3: 에러 메시지 */}
-			{/* {errorMsg && <div className={styles.error}>{errorMsg}</div>} */}
-
-			{/* 레이어 4: AR 궤적 오버레이 */}
-			<canvas ref={arCanvasRef} className={styles.arCanvas} />
+			{/* 오버레이 */}
+			<canvas ref={overlayCanvasRef} className={styles.arCanvas} />
 
 			{/* 레이어 5: 상단 헤더 */}
 			<div className={styles.header}>
@@ -178,7 +193,7 @@ function Main() {
 					</h1>
 					<p className={styles.subtitle}>Real-time Trajectory</p>
 				</div>
-				{isARMode && (
+				{isOverlayEnabled && (
 					<div className={styles.analyzingBadge}>
 						<div className={styles.analyzingDot} />
 						<span className={styles.analyzingText}>실시간 분석 중...</span>
@@ -187,12 +202,17 @@ function Main() {
 			</div>
 
 			{/* 레이어 6: 미니맵 */}
-			<Minimap ref={minimapCanvasRef} visible={isARMode} />
+			<Minimap ref={minimapCanvasRef} visible={isOverlayEnabled} />
 
 			{/* 레이어 7: 하단 컨트롤 패널 */}
 			<div className={styles.controls}>
 				{/* <DebugViewToggle current={debugView} onChange={setDebugView} /> */}
-				<ARButton isARMode={isARMode} onClick={toggleARMode} />
+				<OverlayToggleButton
+					enabled={isOverlayEnabled}
+					onClick={() => {
+						setIsOverlayEnabled((prev) => !prev);
+					}}
+				/>
 			</div>
 
 			{/* 레이어 8: 개발용 로그 패널 (개발 환경에서만 표시) */}

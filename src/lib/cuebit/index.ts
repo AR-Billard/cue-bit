@@ -2,8 +2,12 @@ import cv from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
 import { alignTo16, measure } from "@/common";
+import type { ONNX } from "@/lib/onnx";
+import type { Point } from "@/types/physics";
+import type { FrameInfo } from "../capture";
 import maskShader from "./shaders/mask.wgsl";
 import preprocessShader from "./shaders/preprocess.wgsl";
+import resizeShader from "./shaders/resize.wgsl";
 
 /**
  * 버퍼 인덱스
@@ -14,65 +18,74 @@ export type BufferIndex = 0 | 1;
  * 한 프레임 추론에 필요한 버퍼 세트
  */
 interface BufferSet {
-	preprocessPipeline: GPUComputePipeline;
+	readonly resizePipeline: GPUComputePipeline;
+	readonly preprocessPipeline: GPUComputePipeline;
 	/**
 	 * 프레임을 복사할 텍스처
 	 */
-	frameTexture: GPUTexture;
+	readonly frameTexture: GPUTexture;
+	/**
+	 * 리사이즈된 프레임 텍스쳐
+	 */
+	readonly resizedFrameTexture: GPUTexture;
+	/**
+	 * 리사이즈된 프레임을 저장할 텍스처
+	 */
+	readonly resizeBindGroup: GPUBindGroup;
 	/**
 	 * 셰이더에서 프레임 데이터를 읽어올 때 사용하는 바인드 그룹
 	 */
-	preprocessBindGroup: GPUBindGroup;
+	readonly preprocessBindGroup: GPUBindGroup;
 	/**
 	 * 셰이더에서 프레임 데이터를 읽어올 버퍼
 	 */
-	inputBuffer: GPUBuffer;
+	readonly inputBuffer: GPUBuffer;
 	/**
 	 * ONNX Runtime에서 GPU 버퍼를 텐서로 사용할 때 필요한 래퍼 객체
 	 */
-	inputTensor: ort.Tensor;
+	readonly inputTensor: ort.Tensor;
 	/**
 	 * 모델의 첫 번째 출력 버퍼
 	 */
-	output0Buffer: GPUBuffer;
+	readonly detectionsBuffer: GPUBuffer;
 	/**
 	 * 모델의 첫 번째 출력 텐서
 	 */
-	output0Tensor: ort.Tensor;
+	readonly detectionsTensor: ort.Tensor;
 	/**
 	 * 모델의 두 번째 출력 버퍼
 	 */
-	output1Buffer: GPUBuffer;
+	readonly protosBuffer: GPUBuffer;
 	/**
 	 * 모델의 두 번째 출력 텐서
 	 */
-	output1Tensor: ort.Tensor;
+	readonly protosTensor: ort.Tensor;
 	/**
 	 * output0를 CPU에 전달하기 위한 staging 버퍼
 	 */
-	output0ReadBuffer: GPUBuffer;
+	readonly detectionsReadBuffer: GPUBuffer;
 	/**
 	 * 현재 버퍼에 대해 진행 중인 추론 결과를 나타내는 Promise
 	 */
-	pendingInference: Promise<InferenceSession.OnnxValueMapType> | null;
+	pendingSegmentationInference: Promise<InferenceSession.OnnxValueMapType> | null;
 
-	maskPipeline: GPUComputePipeline;
+	readonly maskPipeline: GPUComputePipeline;
 	/**
 	 * 마스크 생성 셰이더에서 사용할 바인드 그룹
 	 */
-	maskBindgroup: GPUBindGroup;
+	readonly maskBindgroup: GPUBindGroup;
 	/**
 	 * 마스크 생성 셰이더에서 사용할 Params 버퍼
 	 */
-	paramsBuffer: GPUBuffer;
+	readonly maskParamsBuffer: GPUBuffer;
 	/**
 	 * 마스크 이미지를 저장하는 버퍼
 	 */
-	maskBuffer: GPUBuffer;
+	readonly maskBuffer: GPUBuffer;
 	/**
 	 * 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼:
 	 */
-	maskReadBuffer: GPUBuffer;
+	readonly maskReadBuffer: GPUBuffer;
 }
 
 interface DetectionMaskIndex {
@@ -106,8 +119,60 @@ class MaskParams {
 }
 
 interface MaskResult {
-	masks: Float32Array[];
-	params: MaskParams;
+	readonly masks: Float32Array[];
+	readonly params: MaskParams;
+}
+
+interface Quad {
+	readonly points: {
+		readonly topLeft: Point;
+		readonly bottomLeft: Point;
+		readonly bottomRight: Point;
+		readonly topRight: Point;
+	};
+}
+
+function dist(a: Point, b: Point): number {
+	return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function toQuad(points: [Point, Point, Point, Point]): Quad {
+	const indexedPoints = points.map((e, i) => ({
+		point: e,
+		index: i,
+	}));
+
+	const leftmost = indexedPoints.reduce((acc, cur) =>
+		acc.point.x < cur.point.x ? acc : cur,
+	);
+
+	const rightmost = points[(leftmost.index + 2) % 4];
+	const [ccwOfLeftmost, cwOfLeftmost] = [
+		points[(leftmost.index + 1) % 4],
+		points[(leftmost.index + 3) % 4],
+	];
+
+	if (
+		dist(leftmost.point, cwOfLeftmost) < dist(leftmost.point, ccwOfLeftmost)
+	) {
+		return {
+			points: {
+				topLeft: leftmost.point,
+				bottomLeft: ccwOfLeftmost,
+				bottomRight: rightmost,
+				topRight: cwOfLeftmost,
+			},
+		};
+	}
+
+	return {
+		points: {
+			topLeft: cwOfLeftmost,
+			bottomLeft: leftmost.point,
+			bottomRight: ccwOfLeftmost,
+			topRight: rightmost,
+		},
+	};
 }
 
 /**
@@ -130,7 +195,7 @@ function findLargestQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
-): cv.Point[] | null {
+): [Point, Point, Point, Point] | null {
 	// Float32 → 0/255 binary Mat
 	const src = new cv.Mat(height, width, cv.CV_8UC1);
 	for (let i = 0; i < width * height; i++) {
@@ -158,7 +223,7 @@ function findLargestQuad(
 		}
 	}
 
-	let result: { x: number; y: number }[] | null = null;
+	let result: Point[] | null = null;
 	if (maxIdx >= 0) {
 		const cnt = contours.get(maxIdx);
 		const approx = new cv.Mat();
@@ -181,7 +246,8 @@ function findLargestQuad(
 	src.delete();
 	contours.delete();
 	hierarchy.delete();
-	return result;
+
+	return result ? [result[0], result[1], result[2], result[3]] : null;
 }
 
 class Detection {
@@ -213,29 +279,48 @@ function toDetections(detection: Float32Array, chunkSize: number): Detection[] {
  */
 class Cuebit {
 	private device: GPUDevice;
-	private session: InferenceSession;
-	private width: number;
-	private height: number;
+	private onnx: ONNX;
+	private frameInfo: FrameInfo;
 	private preprocessShaderModule: GPUShaderModule;
 	private maskShaderModule: GPUShaderModule;
 	private buffers: [BufferSet, BufferSet];
 	private currentBufferIndex: BufferIndex = 0;
 
-	constructor(
-		device: GPUDevice,
-		session: InferenceSession,
-		width: number,
-		height: number,
-	) {
+	constructor(device: GPUDevice, onnx: ONNX, frameInfo: FrameInfo) {
 		this.device = device;
-		this.session = session;
-		this.width = width;
-		this.height = height;
+		this.onnx = onnx;
+		this.frameInfo = frameInfo;
 		this.preprocessShaderModule = device.createShaderModule({
 			code: preprocessShader,
 		});
 		this.maskShaderModule = device.createShaderModule({
 			code: maskShader,
+		});
+		const resizeBindGroupLayout = device.createBindGroupLayout({
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.COMPUTE,
+					texture: {
+						sampleType: "float",
+					},
+				},
+				{
+					binding: 1,
+					visibility: GPUShaderStage.COMPUTE,
+					storageTexture: {
+						access: "write-only",
+						format: "rgba8unorm",
+					},
+				},
+				{
+					binding: 2,
+					visibility: GPUShaderStage.COMPUTE,
+					buffer: {
+						type: "uniform",
+					},
+				},
+			],
 		});
 		const preprocessBindGroupLayout = device.createBindGroupLayout({
 			entries: [
@@ -291,14 +376,16 @@ class Cuebit {
 
 		this.buffers = [
 			this.createBufferSet(
-				width,
-				height,
+				frameInfo,
+				onnx,
+				resizeBindGroupLayout,
 				preprocessBindGroupLayout,
 				maskBindGroupLayout,
 			),
 			this.createBufferSet(
-				width,
-				height,
+				frameInfo,
+				onnx,
+				resizeBindGroupLayout,
 				preprocessBindGroupLayout,
 				maskBindGroupLayout,
 			),
@@ -306,11 +393,23 @@ class Cuebit {
 	}
 
 	private createBufferSet(
-		width: number,
-		height: number,
+		frameInfo: FrameInfo,
+		onnx: ONNX,
+		resizeBindGroupLayout: GPUBindGroupLayout,
 		preprocessBindGroupLayout: GPUBindGroupLayout,
 		maskBindGroupLayout: GPUBindGroupLayout,
 	): BufferSet {
+		const resizePipeline = this.device.createComputePipeline({
+			layout: this.device.createPipelineLayout({
+				bindGroupLayouts: [resizeBindGroupLayout],
+			}),
+			compute: {
+				module: this.device.createShaderModule({
+					code: resizeShader,
+				}),
+				entryPoint: "resize",
+			},
+		});
 		const preprocessPipeline = this.device.createComputePipeline({
 			layout: this.device.createPipelineLayout({
 				bindGroupLayouts: [preprocessBindGroupLayout],
@@ -321,7 +420,7 @@ class Cuebit {
 			},
 		});
 		const frameTexture = this.device.createTexture({
-			size: [width, height],
+			size: [frameInfo.width, frameInfo.height],
 			format: "rgba8unorm",
 			usage:
 				GPUTextureUsage.COPY_SRC |
@@ -329,19 +428,77 @@ class Cuebit {
 				GPUTextureUsage.TEXTURE_BINDING |
 				GPUTextureUsage.RENDER_ATTACHMENT,
 		});
+
+		const resizedFrameTexture = this.device.createTexture({
+			size: [
+				onnx.segementation.input.feeds.image.width,
+				onnx.segementation.input.feeds.image.height,
+			],
+			format: "rgba8unorm",
+			usage:
+				GPUTextureUsage.COPY_SRC |
+				GPUTextureUsage.COPY_DST |
+				GPUTextureUsage.TEXTURE_BINDING |
+				GPUTextureUsage.STORAGE_BINDING,
+		});
+
+		const resizeParamsBuffer = this.device.createBuffer({
+			label: "Resize Params Buffer",
+			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+			size: alignTo16(4 * 4), // width, height, srcWidth, srcHeight
+		});
+		this.device.queue.writeBuffer(
+			resizeParamsBuffer,
+			0,
+			new Uint32Array([
+				frameInfo.width,
+				frameInfo.height,
+				onnx.segementation.input.feeds.image.width,
+				onnx.segementation.input.feeds.image.height,
+			]),
+		);
+
+		const resizeBindGroup = this.device.createBindGroup({
+			layout: resizeBindGroupLayout,
+			entries: [
+				{
+					binding: 0,
+					resource: frameTexture.createView(),
+				},
+				{
+					binding: 1,
+					resource: resizedFrameTexture.createView(),
+				},
+				{
+					binding: 2,
+					resource: {
+						buffer: resizeParamsBuffer,
+					},
+				},
+			],
+		});
+
 		const inputBuffer = this.device.createBuffer({
+			label: "Input Buffer",
 			usage:
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST |
 				GPUBufferUsage.STORAGE,
-			size: alignTo16(4 * 3 * width * height),
+			// 4 byte * 3 channel * width * height
+			size: alignTo16(4 * onnx.segementation.input.feeds.image.size),
 		});
+
+		const inputTensor = ort.Tensor.fromGpuBuffer(inputBuffer, {
+			dataType: "float32",
+			dims: onnx.segementation.input.feeds.image.shape,
+		});
+
 		const preprocessBindGroup = this.device.createBindGroup({
 			layout: preprocessBindGroupLayout,
 			entries: [
 				{
 					binding: 0,
-					resource: frameTexture.createView(),
+					resource: resizedFrameTexture.createView(),
 				},
 				{
 					binding: 1,
@@ -351,36 +508,36 @@ class Cuebit {
 				},
 			],
 		});
-		const inputTensor = ort.Tensor.fromGpuBuffer(inputBuffer, {
+
+		const detectionsBuffer = this.device.createBuffer({
+			label: "Detections Buffer",
+			usage:
+				GPUBufferUsage.COPY_SRC |
+				GPUBufferUsage.COPY_DST |
+				GPUBufferUsage.STORAGE,
+			size: alignTo16(4 * onnx.segementation.output.fetchs.detections.size),
+		});
+		const detectionsTensor = ort.Tensor.fromGpuBuffer(detectionsBuffer, {
 			dataType: "float32",
-			dims: [1, 3, height, width],
+			dims: onnx.segementation.output.fetchs.detections.shape,
 		});
 
-		const output0Buffer = this.device.createBuffer({
+		const protosBuffer = this.device.createBuffer({
+			label: "Protos Buffer",
 			usage:
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST |
 				GPUBufferUsage.STORAGE,
-			size: alignTo16(4 * 300 * 38),
+			size: alignTo16(4 * onnx.segementation.output.fetchs.protos.size),
 		});
-		const output0Tensor = ort.Tensor.fromGpuBuffer(output0Buffer, {
+		const protosTensor = ort.Tensor.fromGpuBuffer(protosBuffer, {
 			dataType: "float32",
-			dims: [1, 300, 38],
+			dims: onnx.segementation.output.fetchs.protos.shape,
 		});
-		const output1Buffer = this.device.createBuffer({
-			usage:
-				GPUBufferUsage.COPY_SRC |
-				GPUBufferUsage.COPY_DST |
-				GPUBufferUsage.STORAGE,
-			size: alignTo16(4 * 32 * 160 * 160),
-		});
-		const output1Tensor = ort.Tensor.fromGpuBuffer(output1Buffer, {
-			dataType: "float32",
-			dims: [1, 32, 160, 160],
-		});
-		const output0ReadBuffer = this.device.createBuffer({
+		const detectionsReadBuffer = this.device.createBuffer({
+			label: "Detections Read Buffer",
 			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-			size: alignTo16(4 * 300 * 38),
+			size: detectionsBuffer.size,
 		});
 
 		// mask
@@ -393,17 +550,24 @@ class Cuebit {
 				entryPoint: "createMask",
 			},
 		});
-		const paramsBuffer = this.device.createBuffer({
+		const maskParamsBuffer = this.device.createBuffer({
+			label: "Mask Params Buffer",
 			// candidateCount(1) + candidates(31)
 			size: alignTo16(4 * 32),
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 		});
 		const maskBuffer = this.device.createBuffer({
+			label: "Mask Buffer",
 			usage:
 				GPUBufferUsage.STORAGE |
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST,
-			size: alignTo16(4 * 10 * 160 * 160),
+			size: alignTo16(
+				4 *
+					10 *
+					onnx.segementation.output.fetchs.protos.width *
+					onnx.segementation.output.fetchs.protos.height,
+			),
 		});
 		const maskBindgroup = this.device.createBindGroup({
 			layout: maskBindGroupLayout,
@@ -411,19 +575,19 @@ class Cuebit {
 				{
 					binding: 0,
 					resource: {
-						buffer: output0Buffer,
+						buffer: detectionsBuffer,
 					},
 				},
 				{
 					binding: 1,
 					resource: {
-						buffer: output1Buffer,
+						buffer: protosBuffer,
 					},
 				},
 				{
 					binding: 2,
 					resource: {
-						buffer: paramsBuffer,
+						buffer: maskParamsBuffer,
 					},
 				},
 				{
@@ -435,25 +599,29 @@ class Cuebit {
 			],
 		});
 		const maskReadBuffer = this.device.createBuffer({
+			label: "Mask Read Buffer",
 			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-			size: alignTo16(4 * 10 * 160 * 160),
+			size: maskBuffer.size,
 		});
 
 		return {
+			resizePipeline,
 			preprocessPipeline,
 			frameTexture,
+			resizedFrameTexture,
+			resizeBindGroup,
 			preprocessBindGroup,
 			inputBuffer,
 			inputTensor,
-			output0Buffer,
-			output0Tensor,
-			output1Buffer,
-			output1Tensor,
-			output0ReadBuffer,
-			pendingInference: null,
+			detectionsBuffer,
+			detectionsTensor,
+			protosBuffer,
+			protosTensor,
+			detectionsReadBuffer,
+			pendingSegmentationInference: null,
 			maskPipeline,
 			maskBindgroup,
-			paramsBuffer,
+			maskParamsBuffer,
 			maskBuffer,
 			maskReadBuffer,
 		};
@@ -468,6 +636,7 @@ class Cuebit {
 
 		// 프레임 전처리
 		const commandEncoder = this.device.createCommandEncoder();
+		this.resize(commandEncoder, buffer);
 		this.hwc2chw(commandEncoder, buffer);
 		this.device.queue.submit([commandEncoder.finish()]);
 	}
@@ -481,8 +650,19 @@ class Cuebit {
 			{
 				texture: buffer.frameTexture,
 			},
-			[this.width, this.height],
+			[this.frameInfo.width, this.frameInfo.height],
 		);
+	}
+
+	private resize(encoder: GPUCommandEncoder, buffer: BufferSet): void {
+		const pass = encoder.beginComputePass();
+		pass.setPipeline(buffer.resizePipeline);
+		pass.setBindGroup(0, buffer.resizeBindGroup);
+		pass.dispatchWorkgroups(
+			Math.ceil(this.onnx.segementation.input.feeds.image.width / 16),
+			Math.ceil(this.onnx.segementation.input.feeds.image.height / 16),
+		);
+		pass.end();
 	}
 
 	private hwc2chw(encoder: GPUCommandEncoder, buffer: BufferSet): void {
@@ -490,8 +670,9 @@ class Cuebit {
 		pass.setPipeline(buffer.preprocessPipeline);
 		pass.setBindGroup(0, buffer.preprocessBindGroup);
 		pass.dispatchWorkgroups(
-			Math.ceil(this.width / 16),
-			Math.ceil(this.height / 16),
+			// TODO: 여기는 모델의 크기
+			Math.ceil(this.frameInfo.width / 16),
+			Math.ceil(this.frameInfo.height / 16),
 		);
 		pass.end();
 	}
@@ -513,35 +694,38 @@ class Cuebit {
 
 	private async getMask(buffer: BufferSet): Promise<MaskResult | null> {
 		// buffer의 프레임 추론 결과 대기
-		if (buffer.pendingInference == null) {
+		if (buffer.pendingSegmentationInference == null) {
 			return null;
 		}
-		await measure(() => buffer.pendingInference, "Pending Inference"); 
+		await measure(
+			() => buffer.pendingSegmentationInference,
+			"Pending Inference",
+		);
 
 		// buffer의 추론 결과를 staging 버퍼로 복사
 		const stagingCommandEncoder = this.device.createCommandEncoder();
 		stagingCommandEncoder.copyBufferToBuffer(
-			buffer.output0Buffer,
+			buffer.detectionsBuffer,
 			0,
-			buffer.output0ReadBuffer,
+			buffer.detectionsReadBuffer,
 			0,
-			4 * 300 * 38,
+			buffer.detectionsReadBuffer.size,
 		);
 		this.device.queue.submit([stagingCommandEncoder.finish()]);
 
-		await buffer.output0ReadBuffer.mapAsync(GPUMapMode.READ);
+		await buffer.detectionsReadBuffer.mapAsync(GPUMapMode.READ);
 		const detections = toDetections(
-			new Float32Array(buffer.output0ReadBuffer.getMappedRange().slice(0)),
-			38,
+			new Float32Array(buffer.detectionsReadBuffer.getMappedRange().slice(0)),
+			this.onnx.segementation.output.fetchs.detections.stride,
 		);
-		buffer.output0ReadBuffer.unmap();
+		buffer.detectionsReadBuffer.unmap();
 
 		// 마스크 이미지를 만들 detections 인덱스 선택
 		const params = this.getMaskParams(detections);
 
 		//
 		this.device.queue.writeBuffer(
-			buffer.paramsBuffer,
+			buffer.maskParamsBuffer,
 			0,
 			params.toByteLayout(),
 		);
@@ -550,7 +734,10 @@ class Cuebit {
 		const maskPass = commandEncoder.beginComputePass();
 		maskPass.setPipeline(buffer.maskPipeline);
 		maskPass.setBindGroup(0, buffer.maskBindgroup);
-		maskPass.dispatchWorkgroups(Math.ceil(160 / 16), Math.ceil(160 / 16));
+		maskPass.dispatchWorkgroups(
+			Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
+			Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
+		);
 		maskPass.end();
 		this.device.queue.submit([commandEncoder.finish()]);
 
@@ -561,8 +748,11 @@ class Cuebit {
 			0,
 			buffer.maskReadBuffer,
 			0,
-			// 4 byte * 10개 detection * 160 * 160
-			4 * 10 * 160 * 160,
+			// 4 byte * 10개 detection * width * height
+			4 *
+				10 *
+				this.onnx.segementation.output.fetchs.protos.width *
+				this.onnx.segementation.output.fetchs.protos.height,
 		);
 		this.device.queue.submit([maskStagingCommandEncoder.finish()]);
 
@@ -570,7 +760,8 @@ class Cuebit {
 
 		const masks = splitFloat32Array(
 			new Float32Array(buffer.maskReadBuffer.getMappedRange().slice(0)),
-			160 * 160,
+			this.onnx.segementation.output.fetchs.protos.width *
+				this.onnx.segementation.output.fetchs.protos.height,
 		);
 		buffer.maskReadBuffer.unmap();
 
@@ -601,15 +792,19 @@ class Cuebit {
 		);
 
 		// 이전 추론이 완료된 후 현재 버퍼에 대해 추론 시작
-		currentBuffer.pendingInference = this.session.run(
-			{
-				[this.session.inputNames[0]]: currentBuffer.inputTensor,
-			},
-			{
-				[this.session.outputNames[0]]: currentBuffer.output0Tensor,
-				[this.session.outputNames[1]]: currentBuffer.output1Tensor,
-			},
-		);
+		currentBuffer.pendingSegmentationInference =
+			this.onnx.segementation.session.run(
+				{
+					[this.onnx.segementation.input.feeds.image.name]:
+						currentBuffer.inputTensor,
+				},
+				{
+					[this.onnx.segementation.output.fetchs.detections.name]:
+						currentBuffer.detectionsTensor,
+					[this.onnx.segementation.output.fetchs.protos.name]:
+						currentBuffer.protosTensor,
+				},
+			);
 
 		const getTablePoints = () => {
 			const table = maskResult?.params?.table;
@@ -620,23 +815,22 @@ class Cuebit {
 
 			const mask = maskResult.masks[table.index];
 
-			return findLargestQuad(mask, 160, 160);
+			return findLargestQuad(
+				mask,
+				this.onnx.segementation.output.fetchs.protos.width,
+				this.onnx.segementation.output.fetchs.protos.height,
+			);
 		};
 
-		const table = measure(() => getTablePoints(), "Find Largest Quad");
-
-		const result =
-			maskResult === null
-				? null
-				: {
-						frameTexture: previousBuffer.frameTexture,
-						table,
-					};
+		const points = measure(() => getTablePoints(), "Find Largest Quad");
+		const quad = points ? toQuad(points) : null;
 
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
 
-		return result;
+		return {
+			quad,
+		};
 	}
 
 	public getCurrentBufferIndex(): BufferIndex {
