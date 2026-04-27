@@ -175,6 +175,36 @@ function toQuad(points: [Point, Point, Point, Point]): Quad {
 	};
 }
 
+function getTransformMatrix(quad: Quad): cv.Mat {
+	return cv.getPerspectiveTransform(
+		cv.matFromArray(4, 1, cv.CV_32FC2, [
+			quad.points.topLeft.x ?? 0,
+			quad.points.topLeft.y ?? 0,
+			quad.points.bottomLeft.x ?? 0,
+			quad.points.bottomLeft.y ?? 0,
+			quad.points.bottomRight.x ?? 0,
+			quad.points.bottomRight.y ?? 0,
+			quad.points.topRight.x ?? 0,
+			quad.points.topRight.y ?? 0,
+		]),
+		cv.matFromArray(
+			4,
+			1,
+			cv.CV_32FC2,
+			[
+				// Top-Left
+				0, 2844,
+				// Bottom-Left
+				0, 0,
+				// Bottom-Right
+				1422, 0,
+				// Top-Right
+				1422, 2844,
+			],
+		),
+	);
+}
+
 /**
  *
  */
@@ -825,11 +855,14 @@ class Cuebit {
 		const points = measure(() => getTablePoints(), "Find Largest Quad");
 		const quad = points ? toQuad(points) : null;
 
+		const transformMatrix = quad ? getTransformMatrix(quad) : null;
+
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
 
 		return {
 			quad,
+			transformMatrix,
 		};
 	}
 
