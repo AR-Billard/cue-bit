@@ -856,6 +856,9 @@ class Cuebit {
 		const quad = points ? toQuad(points) : null;
 
 		const transformMatrix = quad ? getTransformMatrix(quad) : null;
+		const inverseTransformMatrix = transformMatrix
+			? transformMatrix.inv(cv.DECOMP_LU)
+			: null;
 
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
@@ -863,6 +866,7 @@ class Cuebit {
 		return {
 			quad,
 			transformMatrix,
+			inverseTransformMatrix,
 		};
 	}
 
