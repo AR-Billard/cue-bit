@@ -5,6 +5,13 @@ export interface FrameInfo {
 	readonly height: number;
 }
 
+export interface FrameCapture {
+	readonly frameInfo: FrameInfo;
+	readonly on: (
+		callback: (frame: VideoFrame) => Promise<void>,
+	) => Promise<void>;
+}
+
 /**
  * 프레임 캡처하는 유틸 생성
  * @param track
@@ -13,7 +20,7 @@ export interface FrameInfo {
 async function createFrameCapture(
 	signal: AbortSignal,
 	track: MediaStreamVideoTrack,
-) {
+): Promise<FrameCapture> {
 	const processor = new MediaStreamTrackProcessor({
 		track,
 	});

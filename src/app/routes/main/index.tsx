@@ -8,28 +8,37 @@ import { device, onnx } from "@/lib/onnx";
 import createVisualizer from "@/lib/visualize";
 import styles from "./index.module.css";
 
-/** 당구 모드 타입 — ModeToggle과 공유 */
-export type BilliardMode = "3구" | "4구";
-
 /**
  * 메인 페이지.
- * 이 파일은 "조립"만 담당해요.
- *
- * - 카메라/OpenCV 로직  → useCamera 훅
- * - AR 오버레이         → useAR 훅
- * - UI 컴포넌트들       → ARButton, ModeToggle, Minimap, DebugViewToggle
- * - 개발용 로그 패널    → DevLog (개발 환경에서만 표시)
  */
 function Main() {
+	/**
+	 * 카메라 프레임 표시하는 Canvas
+	 */
 	const videoCanvasRef = useRef<HTMLCanvasElement>(null);
+	/**
+	 * 디버깅용 Canvas
+	 */
 	const debugCanvasRef = useRef<HTMLCanvasElement>(null);
+	/**
+	 * Overlay Canvas
+	 */
 	const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+	/**
+	 * 미니맵 캔버스
+	 */
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
-	const containerRef = useRef<HTMLDivElement>(null);
 
 	// const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
 
+	/**
+	 *
+	 */
 	const [isOverlayEnabled, setIsOverlayEnabled] = useState(false);
+	const isOverlayEnabledRef = useRef(isOverlayEnabled);
+	useEffect(() => {
+		isOverlayEnabledRef.current = isOverlayEnabled;
+	}, [isOverlayEnabled]);
 
 	const createOverlayDrawer = useCallback(
 		(canvas: HTMLCanvasElement, width: number, height: number) => {
@@ -57,6 +66,9 @@ function Main() {
 		[],
 	);
 
+	/**
+	 * frame capture 생성
+	 */
 	useEffect(() => {
 		// 비동기 작업을 중단하기 위한 AbortController
 		const ac = new AbortController();
@@ -77,6 +89,7 @@ function Main() {
 			});
 			// 비디오 트랙 가져오기
 			const [track] = stream.getVideoTracks();
+
 			// 프레임 캡처 유틸 생성
 			const frameCapture = await createFrameCapture(
 				// cleanup 시 프레임 캡처 중단을 위해 signal 전달
@@ -98,6 +111,7 @@ function Main() {
 					height: 640,
 				},
 			);
+
 			const overlayDrawer = createOverlayDrawer(
 				overlayCanvasRef.current ?? todo("overlay canvas가 없음"),
 				frameCapture.frameInfo.width,
@@ -105,9 +119,14 @@ function Main() {
 			);
 
 			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
+
 			console.log("Cuebit instance created:", cuebit);
 
-			await frameCapture.on(async (frame) => {
+			frameCapture.on(async (frame) => {
+				if (!isOverlayEnabledRef.current) {
+					return;
+				}
+
 				const result = await measure(
 					() => cuebit.process(frame),
 					"Process Frame",
@@ -117,8 +136,6 @@ function Main() {
 				const buffer = cuebit.getBuffer(bufferIndex);
 				frameDrawer.draw(buffer.frameTexture);
 				// debugDrawer.draw(buffer.resizedFrameTexture);
-
-				console.log(result);
 
 				if (!result) {
 					return;
@@ -134,8 +151,8 @@ function Main() {
 						return;
 					}
 					context.strokeStyle = "red";
-					context.lineWidth = width * 0.01;
-					context.font = `${width * 0.1}px Arial`;
+					context.lineWidth = width * 0.005;
+					context.font = `${width * 0.05}px Arial`;
 					context.fillStyle = "red";
 					context.textAlign = "center";
 					context.textBaseline = "middle";
@@ -173,19 +190,20 @@ function Main() {
 		return () => {
 			ac.abort();
 		};
-	}, [overlayCanvasRef, createOverlayDrawer]);
+	}, [createOverlayDrawer]);
 
 	return (
-		<div ref={containerRef} className={styles.container}>
+		<div className={styles.container}>
 			{/* 카메라 프레임 */}
 			<canvas ref={videoCanvasRef} className={styles.videoCanvas} />
 
+			{/* 디버깅 */}
 			<canvas ref={debugCanvasRef} className={styles.debugCanvas} />
 
 			{/* 오버레이 */}
 			<canvas ref={overlayCanvasRef} className={styles.arCanvas} />
 
-			{/* 레이어 5: 상단 헤더 */}
+			{/* 상단 헤더 */}
 			<div className={styles.header}>
 				<div>
 					<h1 className={styles.title}>
@@ -201,10 +219,10 @@ function Main() {
 				)}
 			</div>
 
-			{/* 레이어 6: 미니맵 */}
+			{/* 미니맵 */}
 			<Minimap ref={minimapCanvasRef} visible={isOverlayEnabled} />
 
-			{/* 레이어 7: 하단 컨트롤 패널 */}
+			{/* 하단 컨트롤 패널 */}
 			<div className={styles.controls}>
 				{/* <DebugViewToggle current={debugView} onChange={setDebugView} /> */}
 				<OverlayToggleButton
@@ -215,7 +233,7 @@ function Main() {
 				/>
 			</div>
 
-			{/* 레이어 8: 개발용 로그 패널 (개발 환경에서만 표시) */}
+			{/* 개발용 로그 패널 (개발 환경에서만 표시) */}
 			{/* <DevLog /> */}
 		</div>
 	);
