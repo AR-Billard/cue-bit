@@ -147,7 +147,7 @@ function Main() {
 
 					context.clearRect(0, 0, width, height);
 
-					if (!result.quad) {
+					if (!result.table) {
 						return;
 					}
 					context.strokeStyle = "red";
@@ -155,14 +155,14 @@ function Main() {
 					context.font = `${width * 0.05}px Arial`;
 					context.fillStyle = "red";
 					context.textAlign = "center";
-					context.textBaseline = "middle";
+					context.textBaseline = "bottom";
 
 					context.beginPath();
 					const points = [
-						result.quad.points.topLeft,
-						result.quad.points.bottomLeft,
-						result.quad.points.bottomRight,
-						result.quad.points.topRight,
+						result.table.quad.points.topLeft,
+						result.table.quad.points.bottomLeft,
+						result.table.quad.points.bottomRight,
+						result.table.quad.points.topRight,
 					];
 
 					for (let i = 0; i < 4; i++) {
@@ -183,6 +183,19 @@ function Main() {
 						);
 					}
 					context.stroke();
+
+					for (const ball of result.balls) {
+						context.beginPath();
+						context.arc(
+							ball.position.x * widthScaleFactor,
+							ball.position.y * heightScaleFactor,
+							width * 0.02,
+							0,
+							2 * Math.PI,
+						);
+						context.fillStyle = "blue";
+						context.fill();
+					}
 				});
 			});
 		})();
