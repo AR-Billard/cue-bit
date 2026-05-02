@@ -20,9 +20,9 @@ export function measure<T>(
 		});
 	}
 
-	console.log(
-		`Execution time${tag ? ` (${tag})` : ""}: ${(performance.now() - start).toFixed(2)} ms`,
-	);
+	// console.log(
+	// 	`Execution time${tag ? ` (${tag})` : ""}: ${(performance.now() - start).toFixed(2)} ms`,
+	// );
 	return result;
 }
 

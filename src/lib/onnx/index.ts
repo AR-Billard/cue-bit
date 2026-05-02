@@ -159,7 +159,7 @@ function parseSegmentationSession(
 
 const onnx: ONNX = {
 	segementation: parseSegmentationSession(
-		await ort.InferenceSession.create("/backup/seg16.onnx", {
+		await ort.InferenceSession.create("/backup/seg32.onnx", {
 			executionProviders: ["webgpu"],
 			// logSeverityLevel: 0,
 		}),
