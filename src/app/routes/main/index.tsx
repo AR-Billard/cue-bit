@@ -1,18 +1,9 @@
-import {
-	useCallback,
-	useEffect,
-	useEffectEvent,
-	useRef,
-	useState,
-} from "react";
-import { measure, todo } from "@/common";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { measure } from "@/common";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
-import useGPUCanvas, {
-	drawTexture,
-	type GPUCanvasHandle,
-} from "@/hooks/use-gpu-canvas";
+import useGPUCanvas, { drawTexture } from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import { device, onnx } from "@/lib/onnx";
@@ -25,54 +16,32 @@ function Main() {
 	/**
 	 * 카메라 프레임 표시하는 Canvas
 	 */
-	const cameraCanvas = useGPUCanvas();
-
+	const [createCameraCanvas, cameraCanvasSpec] = useGPUCanvas();
 	/**
-	 * Overlay Canvas
+	 * Debug Canvas
 	 */
-	const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+	const [
+		create2DCanvas,
+		createGPUCanvas,
+		debugCanvasSpecs,
+		clearDebugCanvasSpecs,
+	] = useDebugCanvas();
 	/**
 	 * 미니맵 캔버스
 	 */
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
-
-	const debugCanvas = useDebugCanvas();
-
-	// const [debugView, setDebugView] = useState<DebugView>("original"); // 현재 디버그 뷰
 
 	/**
 	 * overlay 활성화 여부
 	 */
 	const [isOverlayEnabled, setIsOverlayEnabled] = useState(false);
 
-	const createOverlayDrawer = useCallback(
-		(canvas: HTMLCanvasElement, width: number, height: number) => {
-			canvas.width = width;
-			canvas.height = height;
-
-			const context =
-				canvas.getContext("2d") ?? todo("Failed to get 2D context from canvas");
-
-			return {
-				draw: (
-					pass: (
-						context: CanvasRenderingContext2D,
-						width: number,
-						height: number,
-					) => void,
-				) => {
-					pass(context, canvas.width, canvas.height);
-				},
-			};
-		},
-		[],
-	);
-
 	const loop = useEffectEvent(
 		async (
 			frame: VideoFrame,
 			cuebit: Cuebit,
-			videCanvasHandle: GPUCanvasHandle,
+			cameraCanvas: CanvasHandle<"webgpu">,
+			resizedFrameCanvas: CanvasHandle<"webgpu">,
 		) => {
 			if (!isOverlayEnabled) {
 				return;
@@ -85,10 +54,12 @@ function Main() {
 
 			const bufferIndex = cuebit.getCurrentBufferIndex();
 			const buffer = cuebit.getBuffer(bufferIndex);
-			videCanvasHandle.draw((device, handle) => {
-				drawTexture(device, handle.context, buffer.frameTexture);
-			});
-			// debugDrawer.draw(buffer.resizedFrameTexture);
+			drawTexture(device, cameraCanvas.context, buffer.frameTexture);
+			drawTexture(
+				device,
+				resizedFrameCanvas.context,
+				buffer.resizedFrameTexture,
+			);
 
 			if (!result) {
 				return;
@@ -184,29 +155,75 @@ function Main() {
 			);
 			console.log("Frame capture created:", frameCapture);
 
-			const cam = await cameraCanvas.createCanvas(
+			const cameraCanvas = await createCameraCanvas(
 				device,
 				frameCapture.frameInfo.width,
 				frameCapture.frameInfo.height,
 			);
 
+			if (ac.signal.aborted) {
+				return;
+			}
+
 			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
 			console.log("Cuebit instance created:", cuebit);
 
+			const resizedFrameCanvas = await createGPUCanvas(
+				device,
+				frameCapture.frameInfo.width,
+				frameCapture.frameInfo.height,
+			);
+
+			if (ac.signal.aborted) {
+				return;
+			}
+
 			frameCapture.on(async (frame) => {
-				await loop(frame, cuebit, cam);
+				await loop(frame, cuebit, cameraCanvas, resizedFrameCanvas);
 			});
 		})();
 
 		return () => {
 			ac.abort();
+			clearDebugCanvasSpecs();
 		};
-	}, [cameraCanvas, createOverlayDrawer]);
+	}, [
+		createCameraCanvas,
+		create2DCanvas,
+		createGPUCanvas,
+		clearDebugCanvasSpecs,
+	]);
 
 	return (
 		<div className={styles.container}>
 			{/* 카메라 프레임 */}
-			<div>{<cameraCanvas.element className={styles.videoCanvas} />}</div>
+			<div
+				style={{
+					position: "absolute",
+					width: "100%",
+					height: "100%",
+				}}
+			>
+				{cameraCanvasSpec === null ? (
+					<></>
+				) : (
+					<canvas
+						ref={(element) => {
+							if (element) {
+								cameraCanvasSpec.onMount(element);
+							}
+						}}
+						width={cameraCanvasSpec.width}
+						height={cameraCanvasSpec.height}
+						style={{
+							width: "100%",
+							height: "100%",
+							objectFit: "cover",
+							objectPosition: "50% 50%",
+						}}
+					/>
+				)}
+			</div>
 
 			{/* 디버깅 */}
 			<div
@@ -215,27 +232,51 @@ function Main() {
 					height: "auto",
 					aspectRatio: "1 / 1",
 					overflow: "scroll",
-					display: "flex",
-					flexDirection: "row",
+					position: "absolute",
 				}}
 			>
-				{debugCanvas.specs.map((spec) => (
-					<canvas
-						key={spec.id}
-						ref={spec.ref}
-						width={spec.width}
-						height={spec.height}
+				<div
+					style={{
+						width: "auto",
+						height: "auto",
+						display: "flex",
+						flexDirection: "row",
+					}}
+				>
+					<div
 						style={{
 							width: "100vw",
 							height: "auto",
 							aspectRatio: "1 / 1",
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							flexShrink: 0,
 						}}
-					/>
-				))}
+					></div>
+
+					{debugCanvasSpecs.map((spec) => (
+						<canvas
+							key={spec.id}
+							ref={(element) => {
+								if (element) {
+									spec.onMount(element);
+								}
+							}}
+							width={spec.width}
+							height={spec.height}
+							style={{
+								width: "100vw",
+								height: "auto",
+								aspectRatio: "1 / 1",
+							}}
+						/>
+					))}
+				</div>
 			</div>
 
 			{/* 오버레이 */}
-			<canvas ref={overlayCanvasRef} className={styles.arCanvas} />
+			{/* <canvas ref={overlayCanvasRef} className={styles.arCanvas} /> */}
 
 			{/* 상단 헤더 */}
 			<div className={styles.header}>

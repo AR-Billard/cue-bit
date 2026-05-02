@@ -4,13 +4,7 @@ import { todo } from "@/common";
 type CanvasSpec = {
 	width: number;
 	height: number;
-	ref: (canvas: HTMLCanvasElement) => void;
-};
-
-type Pass = (device: GPUDevice, handler: CanvasHandle<"webgpu">) => void;
-
-export type GPUCanvasHandle = {
-	draw: (pass: Pass) => void;
+	onMount: (canvas: HTMLCanvasElement) => void;
 };
 
 export function drawTexture(
@@ -39,12 +33,12 @@ function useGPUCanvas() {
 			device: GPUDevice,
 			width: number,
 			height: number,
-		): Promise<GPUCanvasHandle> => {
+		): Promise<CanvasHandle<"webgpu">> => {
 			return new Promise((resolve) => {
 				setSpec({
 					width,
 					height,
-					ref: (canvas) => {
+					onMount: (canvas) => {
 						const context =
 							canvas.getContext("webgpu") ??
 							todo("webgpu context를 얻을 수 없음");
@@ -56,15 +50,9 @@ function useGPUCanvas() {
 								GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 						});
 
-						const handle = {
+						resolve({
 							canvas,
 							context,
-						};
-
-						resolve({
-							draw: (pass: Pass) => {
-								pass(device, handle);
-							},
 						});
 					},
 				});
@@ -73,34 +61,7 @@ function useGPUCanvas() {
 		[setSpec],
 	);
 
-	const element = useCallback(
-		(
-			style: React.DetailedHTMLProps<
-				React.StyleHTMLAttributes<HTMLStyleElement>,
-				HTMLStyleElement
-			>,
-		) => {
-			if (!spec) {
-				return <></>;
-			}
-
-			return (
-				<canvas
-					ref={(element) => {
-                        if (element) {
-                            spec.ref(element);
-                        }
-                    }}
-					width={spec.width}
-					height={spec.height}
-					style={style}
-				/>
-			);
-		},
-		[spec],
-	);
-
-	return { createCanvas, element };
+	return [createCanvas, spec] as const;
 }
 
 export default useGPUCanvas;

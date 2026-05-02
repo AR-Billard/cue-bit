@@ -1,24 +1,19 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { todo } from "@/common";
 
-type CanvasSpec = {
+export type DebugCanvasSpec = {
 	id: number;
 	width: number;
 	height: number;
-	contextId: keyof ContextMap;
-	ref: (canvas: HTMLCanvasElement) => void;
+	onMount: (canvas: HTMLCanvasElement) => void;
 };
 
 function useDebugCanvas() {
 	const id = useRef(0);
-	const [specs, setSpecs] = useState<CanvasSpec[]>([]);
+	const [specs, setSpecs] = useState<DebugCanvasSpec[]>([]);
 
-	const createCanvas = useCallback(
-		<T extends keyof ContextMap>(
-			width: number,
-			height: number,
-			contextId: T,
-		): Promise<CanvasHandle<T>> => {
+	const create2DCanvas = useCallback(
+		(width: number, height: number): Promise<CanvasHandle<"2d">> => {
 			return new Promise((resolve) => {
 				setSpecs((prev) => [
 					...prev,
@@ -26,15 +21,13 @@ function useDebugCanvas() {
 						id: id.current++,
 						width,
 						height,
-						contextId: contextId,
-						ref: (canvas) => {
+						onMount: (canvas) => {
 							const context =
-								canvas.getContext(contextId) ??
-								todo(`getContext(${contextId}) failed`);
+								canvas.getContext("2d") ?? todo(`context를 얻을 수 없음`);
 
 							resolve({
 								canvas,
-								context: context as ContextMap[T],
+								context,
 							});
 						},
 					},
@@ -44,6 +37,46 @@ function useDebugCanvas() {
 		[setSpecs],
 	);
 
-	return { createCanvas, specs };
+	const createGPUCanvas = useCallback(
+		(
+			device: GPUDevice,
+			width: number,
+			height: number,
+		): Promise<CanvasHandle<"webgpu">> => {
+			return new Promise((resolve) => {
+				setSpecs((prev) => [
+					...prev,
+					{
+						id: id.current++,
+						width,
+						height,
+						onMount: (canvas) => {
+							const context =
+								canvas.getContext("webgpu") ?? todo(`context를 얻을 수 없음`);
+
+							context.configure({
+								device,
+								format: "rgba8unorm",
+								usage:
+									GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+							});
+
+							resolve({
+								canvas,
+								context,
+							});
+						},
+					},
+				]);
+			});
+		},
+		[setSpecs],
+	);
+
+	const clear = useCallback(() => {
+		setSpecs([]);
+	}, [setSpecs]);
+
+	return [create2DCanvas, createGPUCanvas, specs, clear] as const;
 }
 export default useDebugCanvas;
