@@ -348,113 +348,16 @@ class Cuebit {
 		this.maskShaderModule = device.createShaderModule({
 			code: maskShader,
 		});
-		const resizeBindGroupLayout = device.createBindGroupLayout({
-			entries: [
-				{
-					binding: 0,
-					visibility: GPUShaderStage.COMPUTE,
-					texture: {
-						sampleType: "float",
-					},
-				},
-				{
-					binding: 1,
-					visibility: GPUShaderStage.COMPUTE,
-					storageTexture: {
-						access: "write-only",
-						format: "rgba8unorm",
-					},
-				},
-				{
-					binding: 2,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: "uniform",
-					},
-				},
-			],
-		});
-		const preprocessBindGroupLayout = device.createBindGroupLayout({
-			entries: [
-				{
-					binding: 0,
-					visibility: GPUShaderStage.COMPUTE,
-					texture: {
-						sampleType: "float",
-					},
-				},
-				{
-					binding: 1,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: "storage",
-					},
-				},
-			],
-		});
-
-		const maskBindGroupLayout = device.createBindGroupLayout({
-			entries: [
-				{
-					binding: 0,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: "read-only-storage",
-					},
-				},
-				{
-					binding: 1,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: "read-only-storage",
-					},
-				},
-				{
-					binding: 2,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: "read-only-storage",
-					},
-				},
-				{
-					binding: 3,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: "storage",
-					},
-				},
-			],
-		});
 
 		this.buffers = [
-			this.createBufferSet(
-				frameInfo,
-				onnx,
-				resizeBindGroupLayout,
-				preprocessBindGroupLayout,
-				maskBindGroupLayout,
-			),
-			this.createBufferSet(
-				frameInfo,
-				onnx,
-				resizeBindGroupLayout,
-				preprocessBindGroupLayout,
-				maskBindGroupLayout,
-			),
+			this.createBufferSet(frameInfo, onnx),
+			this.createBufferSet(frameInfo, onnx),
 		];
 	}
 
-	private createBufferSet(
-		frameInfo: FrameInfo,
-		onnx: ONNX,
-		resizeBindGroupLayout: GPUBindGroupLayout,
-		preprocessBindGroupLayout: GPUBindGroupLayout,
-		maskBindGroupLayout: GPUBindGroupLayout,
-	): BufferSet {
+	private createBufferSet(frameInfo: FrameInfo, onnx: ONNX): BufferSet {
 		const resizePipeline = this.device.createComputePipeline({
-			layout: this.device.createPipelineLayout({
-				bindGroupLayouts: [resizeBindGroupLayout],
-			}),
+			layout: "auto",
 			compute: {
 				module: this.device.createShaderModule({
 					code: resizeShader,
@@ -463,9 +366,7 @@ class Cuebit {
 			},
 		});
 		const preprocessPipeline = this.device.createComputePipeline({
-			layout: this.device.createPipelineLayout({
-				bindGroupLayouts: [preprocessBindGroupLayout],
-			}),
+			layout: "auto",
 			compute: {
 				module: this.preprocessShaderModule,
 				entryPoint: "hwc2chw",
@@ -494,6 +395,11 @@ class Cuebit {
 				GPUTextureUsage.STORAGE_BINDING,
 		});
 
+		const sampler = this.device.createSampler({
+			magFilter: "linear",
+			minFilter: "linear",
+		});
+
 		const resizeParamsBuffer = this.device.createBuffer({
 			label: "Resize Params Buffer",
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -511,7 +417,7 @@ class Cuebit {
 		);
 
 		const resizeBindGroup = this.device.createBindGroup({
-			layout: resizeBindGroupLayout,
+			layout: resizePipeline.getBindGroupLayout(0),
 			entries: [
 				{
 					binding: 0,
@@ -526,6 +432,10 @@ class Cuebit {
 					resource: {
 						buffer: resizeParamsBuffer,
 					},
+				},
+				{
+					binding: 3,
+					resource: sampler,
 				},
 			],
 		});
@@ -546,7 +456,7 @@ class Cuebit {
 		});
 
 		const preprocessBindGroup = this.device.createBindGroup({
-			layout: preprocessBindGroupLayout,
+			layout: preprocessPipeline.getBindGroupLayout(0),
 			entries: [
 				{
 					binding: 0,
@@ -594,9 +504,7 @@ class Cuebit {
 
 		// mask
 		const maskPipeline = this.device.createComputePipeline({
-			layout: this.device.createPipelineLayout({
-				bindGroupLayouts: [maskBindGroupLayout],
-			}),
+			layout: "auto",
 			compute: {
 				module: this.maskShaderModule,
 				entryPoint: "createMask",
@@ -622,7 +530,7 @@ class Cuebit {
 			),
 		});
 		const maskBindgroup = this.device.createBindGroup({
-			layout: maskBindGroupLayout,
+			layout: maskPipeline.getBindGroupLayout(0),
 			entries: [
 				{
 					binding: 0,
@@ -908,13 +816,17 @@ class Cuebit {
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
 
-        const scaleFactorX = this.onnx.segementation.output.fetchs.protos.width / this.onnx.segementation.input.feeds.image.width;
-        const scaleFactorY = this.onnx.segementation.output.fetchs.protos.height / this.onnx.segementation.input.feeds.image.height;
+		const scaleFactorX =
+			this.onnx.segementation.output.fetchs.protos.width /
+			this.onnx.segementation.input.feeds.image.width;
+		const scaleFactorY =
+			this.onnx.segementation.output.fetchs.protos.height /
+			this.onnx.segementation.input.feeds.image.height;
 
 		const balls =
 			postprocessResult?.balls?.map((ball) => ({
 				x: ball.x * scaleFactorX,
-                y: ball.y * scaleFactorY,
+				y: ball.y * scaleFactorY,
 			})) ?? [];
 
 		return {

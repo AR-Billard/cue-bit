@@ -8,6 +8,7 @@ struct Params {
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var output: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<uniform> params: Params;
+@group(0) @binding(3) var sourceSampler: sampler;
 
 @compute @workgroup_size(16, 16)
 fn resize(@builtin(global_invocation_id) id: vec3u) {
@@ -19,6 +20,7 @@ fn resize(@builtin(global_invocation_id) id: vec3u) {
     }
 
     // 비율 계산
+    // REVIEW: Params에 포함해도 될듯
     let scale = min(
         f32(params.outputWidth) / f32(params.sourceWidth),
         f32(params.outputHeight) / f32(params.sourceHeight),
@@ -44,20 +46,8 @@ fn resize(@builtin(global_invocation_id) id: vec3u) {
     let srcX = ((fx - offsetX) + 0.5) / scale - 0.5;
     let srcY = ((fy - offsetY) + 0.5) / scale - 0.5;
 
-    let x0 = u32(max(floor(srcX), 0.0));
-    let y0 = u32(max(floor(srcY), 0.0));
-    let x1 = min(x0 + 1u, params.sourceWidth - 1u);
-    let y1 = min(y0 + 1u, params.sourceHeight - 1u);
-
-    let tx = srcX - floor(srcX);
-    let ty = srcY - floor(srcY);
-
-    let tl = textureLoad(source, vec2u(x0, y0), 0);
-    let tr = textureLoad(source, vec2u(x1, y0), 0);
-    let bl = textureLoad(source, vec2u(x0, y1), 0);
-    let br = textureLoad(source, vec2u(x1, y1), 0);
-
-    let color = mix(mix(tl, tr, tx), mix(bl, br, tx), ty);
+    let uv = vec2f(srcX / f32(params.sourceWidth), srcY / f32(params.sourceHeight));
+    let color = textureSampleLevel(source, sourceSampler, uv, 0.0);
 
     textureStore(output, vec2i(i32(x), i32(y)), color);
 }
