@@ -259,39 +259,33 @@ function Main() {
 			>
 				<div
 					style={{
-						width: "auto",
+						width: "100vw",
 						height: "auto",
 						display: "flex",
-						flexDirection: "row",
-						flexShrink: 0,
 						alignItems: "center",
+						justifyContent: "center",
+						flexShrink: 0,
+						scrollSnapAlign: "center",
 					}}
-				>
-					<div
-						style={{
-							width: "100vw",
-							height: "auto",
-							display: "flex",
-							alignItems: "center",
-							justifyContent: "center",
-							flexShrink: 0,
-						}}
-					></div>
+				></div>
 
-					{debugCanvasSpecs.map((spec) => (
-						<canvas
-							key={spec.id}
-							ref={(element) => {
-								if (element) {
-									spec.onMount(element);
-								}
-							}}
-							width={spec.width}
-							height={spec.height}
-							style={{ ...spec.style, border: "1px solid white" }}
-						/>
-					))}
-				</div>
+				{debugCanvasSpecs.map((spec) => (
+					<canvas
+						key={spec.id}
+						ref={(element) => {
+							if (element) {
+								spec.onMount(element);
+							}
+						}}
+						width={spec.width}
+						height={spec.height}
+						style={{
+							...spec.style,
+							backdropFilter: "brightness(0.6)",
+							scrollSnapAlign: "center",
+						}}
+					/>
+				))}
 			</div>
 
 			{/* 오버레이 */}
