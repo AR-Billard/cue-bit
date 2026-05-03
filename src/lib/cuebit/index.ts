@@ -158,7 +158,7 @@ function toQuad(points: [Point, Point, Point, Point]): Quad {
 	];
 
 	if (
-		dist(leftmost.point, cwOfLeftmost) < dist(leftmost.point, ccwOfLeftmost)
+		dist(leftmost.point, cwOfLeftmost) > dist(leftmost.point, ccwOfLeftmost)
 	) {
 		return {
 			points: {
