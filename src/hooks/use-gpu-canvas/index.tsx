@@ -52,7 +52,7 @@ function useGPUCanvas() {
 
 						resolve({
 							canvas,
-							context,
+							draw: (pass) => pass(device, context, width, height),
 						});
 					},
 				});

@@ -93,6 +93,11 @@ interface DetectionMaskIndex {
 	readonly index: number;
 }
 
+interface Postprocess {
+	tableMask: MaskResult | null;
+	balls: Point[];
+}
+
 class MaskParams {
 	public readonly table: DetectionMaskIndex | null;
 
@@ -289,12 +294,22 @@ function findLargestQuad(
 
 class Detection {
 	public readonly index: number;
+	public readonly lt: Point;
+	public readonly rb: Point;
 	public readonly confidence: number;
 	public readonly classId: number;
 	public readonly coefficients: Float32Array;
 
 	constructor(index: number, chunk: Float32Array) {
 		this.index = index;
+		this.lt = {
+			x: chunk[0],
+			y: chunk[1],
+		};
+		this.rb = {
+			x: chunk[2],
+			y: chunk[3],
+		};
 		this.confidence = chunk[4];
 		this.classId = chunk[5];
 		this.coefficients = chunk.subarray(6);
@@ -714,8 +729,10 @@ class Cuebit {
 		pass.end();
 	}
 
-	private getMaskParams(detections: Detection[]): MaskParams {
+	private select(detections: Detection[]): [Detection | null, Detection[]] {
 		let table: Detection | null = null;
+		const balls: Detection[] = [];
+		const ballClassIds = new Set([0, 1, 3, 4]);
 
 		for (const detection of detections) {
 			// NOTE: 현재 모델은 2가 table임
@@ -723,13 +740,17 @@ class Cuebit {
 				if (table === null || detection.confidence > table.confidence) {
 					table = detection;
 				}
+			} else if (ballClassIds.has(detection.classId)) {
+				if (detection.confidence > 0.3) {
+					balls.push(detection);
+				}
 			}
 		}
 
-		return new MaskParams(table);
+		return [table, balls];
 	}
 
-	private async getMask(buffer: BufferSet): Promise<MaskResult | null> {
+	private async postprocess(buffer: BufferSet): Promise<Postprocess | null> {
 		// buffer의 프레임 추론 결과 대기
 		if (buffer.pendingSegmentationInference == null) {
 			return null;
@@ -757,8 +778,11 @@ class Cuebit {
 		);
 		buffer.detectionsReadBuffer.unmap();
 
-		// 마스크 이미지를 만들 detections 인덱스 선택
-		const params = this.getMaskParams(detections);
+		// 추론 결과에서 테이블과 공 선택
+		const [table, balls] = this.select(detections);
+
+		// 테이블을 위한 마스크 파라미터 생성
+		const params = new MaskParams(table);
 
 		//
 		this.device.queue.writeBuffer(
@@ -803,8 +827,14 @@ class Cuebit {
 		buffer.maskReadBuffer.unmap();
 
 		return {
-			masks,
-			params,
+			tableMask: {
+				masks,
+				params,
+			},
+			balls: balls.map((ball) => ({
+				x: (ball.lt.x + ball.rb.x) / 2,
+				y: (ball.lt.y + ball.rb.y) / 2,
+			})),
 		};
 	}
 
@@ -823,8 +853,8 @@ class Cuebit {
 
 		this.preprocessFrame(frame, currentBuffer);
 
-		const maskResult = await measure(
-			() => this.getMask(previousBuffer),
+		const postprocessResult = await measure(
+			() => this.postprocess(previousBuffer),
 			"Get Mask",
 		);
 
@@ -844,13 +874,19 @@ class Cuebit {
 			);
 
 		const getTablePoints = () => {
-			const table = maskResult?.params?.table;
+			const tableMask = postprocessResult?.tableMask;
+
+			if (!tableMask) {
+				return null;
+			}
+
+			const table = tableMask?.params?.table;
 
 			if (!table) {
 				return null;
 			}
 
-			const mask = maskResult.masks[table.index];
+			const mask = tableMask.masks[table.index];
 
 			return findLargestQuad(
 				mask,
@@ -872,16 +908,18 @@ class Cuebit {
 		// 버퍼 인덱스 업데이트
 		this.currentBufferIndex = (1 - this.currentBufferIndex) as BufferIndex;
 
+        const scaleFactorX = this.onnx.segementation.output.fetchs.protos.width / this.onnx.segementation.input.feeds.image.width;
+        const scaleFactorY = this.onnx.segementation.output.fetchs.protos.height / this.onnx.segementation.input.feeds.image.height;
+
+		const balls =
+			postprocessResult?.balls?.map((ball) => ({
+				x: ball.x * scaleFactorX,
+                y: ball.y * scaleFactorY,
+			})) ?? [];
+
 		return {
 			table,
-			balls: [
-				{
-					position: {
-						x: this.onnx.segementation.output.fetchs.protos.width / 2,
-						y: this.onnx.segementation.output.fetchs.protos.height / 2,
-					},
-				},
-			],
+			balls,
 		};
 	}
 

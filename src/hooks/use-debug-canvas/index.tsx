@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useRef, useState } from "react";
 import { todo } from "@/common";
 
 export type DebugCanvasSpec = {
 	id: number;
 	width: number;
 	height: number;
+	style: CSSProperties;
 	onMount: (canvas: HTMLCanvasElement) => void;
 };
 
@@ -13,7 +14,11 @@ function useDebugCanvas() {
 	const [specs, setSpecs] = useState<DebugCanvasSpec[]>([]);
 
 	const create2DCanvas = useCallback(
-		(width: number, height: number): Promise<CanvasHandle<"2d">> => {
+		(
+			width: number,
+			height: number,
+			style: CSSProperties,
+		): Promise<CanvasHandle<"2d">> => {
 			return new Promise((resolve) => {
 				setSpecs((prev) => [
 					...prev,
@@ -21,13 +26,14 @@ function useDebugCanvas() {
 						id: id.current++,
 						width,
 						height,
+						style,
 						onMount: (canvas) => {
 							const context =
 								canvas.getContext("2d") ?? todo(`context를 얻을 수 없음`);
 
 							resolve({
 								canvas,
-								context,
+								draw: (pass) => pass(context, width, height),
 							});
 						},
 					},
@@ -42,6 +48,7 @@ function useDebugCanvas() {
 			device: GPUDevice,
 			width: number,
 			height: number,
+			style: CSSProperties,
 		): Promise<CanvasHandle<"webgpu">> => {
 			return new Promise((resolve) => {
 				setSpecs((prev) => [
@@ -50,6 +57,7 @@ function useDebugCanvas() {
 						id: id.current++,
 						width,
 						height,
+						style,
 						onMount: (canvas) => {
 							const context =
 								canvas.getContext("webgpu") ?? todo(`context를 얻을 수 없음`);
@@ -63,7 +71,7 @@ function useDebugCanvas() {
 
 							resolve({
 								canvas,
-								context,
+								draw: (pass) => pass(device, context, width, height),
 							});
 						},
 					},

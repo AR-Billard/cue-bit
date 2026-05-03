@@ -21,8 +21,8 @@ function Main() {
 	 * Debug Canvas
 	 */
 	const [
-		create2DCanvas,
-		createGPUCanvas,
+		createDebug2DCanvas,
+		createDebugGPUCanvas,
 		debugCanvasSpecs,
 		clearDebugCanvasSpecs,
 	] = useDebugCanvas();
@@ -42,6 +42,7 @@ function Main() {
 			cuebit: Cuebit,
 			cameraCanvas: CanvasHandle<"webgpu">,
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
+			tableDebugCanvas: CanvasHandle<"2d">,
 		) => {
 			if (!isOverlayEnabled) {
 				return;
@@ -54,75 +55,72 @@ function Main() {
 
 			const bufferIndex = cuebit.getCurrentBufferIndex();
 			const buffer = cuebit.getBuffer(bufferIndex);
-			drawTexture(device, cameraCanvas.context, buffer.frameTexture);
-			drawTexture(
-				device,
-				resizedFrameCanvas.context,
-				buffer.resizedFrameTexture,
-			);
+			cameraCanvas.draw((device, context, _width, _height) => {
+				drawTexture(device, context, buffer.frameTexture);
+			});
+			resizedFrameCanvas.draw((device, context, _width, _height) => {
+				drawTexture(device, context, buffer.resizedFrameTexture);
+			});
 
-			if (!result) {
-				return;
-			}
+			tableDebugCanvas.draw((context, width, height) => {
+				const widthScaleFactor = width / 160;
+				const heightScaleFactor = height / 160;
 
-			// overlayDrawer.draw((context, width, height) => {
-			// 	const widthScaleFactor = width / 160;
-			// 	const heightScaleFactor = height / 160;
+				context.clearRect(0, 0, width, height);
 
-			// 	context.clearRect(0, 0, width, height);
+				if (!result.table) {
+					return;
+				}
 
-			// 	if (!result.table) {
-			// 		return;
-			// 	}
+				context.strokeStyle = "red";
+				context.lineWidth = width * 0.005;
+				context.font = `${width * 0.05}px Arial`;
+				context.fillStyle = "red";
+				context.textAlign = "center";
+				context.textBaseline = "bottom";
 
-			// 	context.strokeStyle = "red";
-			// 	context.lineWidth = width * 0.005;
-			// 	context.font = `${width * 0.05}px Arial`;
-			// 	context.fillStyle = "red";
-			// 	context.textAlign = "center";
-			// 	context.textBaseline = "bottom";
+				context.beginPath();
 
-			// 	context.beginPath();
+				const points = [
+					result.table.quad.points.topLeft,
+					result.table.quad.points.bottomLeft,
+					result.table.quad.points.bottomRight,
+					result.table.quad.points.topRight,
+				];
 
-			// 	const points = [
-			// 		result.table.quad.points.topLeft,
-			// 		result.table.quad.points.bottomLeft,
-			// 		result.table.quad.points.bottomRight,
-			// 		result.table.quad.points.topRight,
-			// 	];
+				for (let i = 0; i < 4; i++) {
+					const point = points[i];
+					context.fillText(
+						`${i}`,
+						point.x * widthScaleFactor,
+						point.y * heightScaleFactor,
+					);
+					context.moveTo(
+						point.x * widthScaleFactor,
+						point.y * heightScaleFactor,
+					);
+					const nextPoint = points[(i + 1) % 4];
+					context.lineTo(
+						nextPoint.x * widthScaleFactor,
+						nextPoint.y * heightScaleFactor,
+					);
+				}
+				context.stroke();
 
-			// 	for (let i = 0; i < 4; i++) {
-			// 		const point = points[i];
-			// 		context.fillText(
-			// 			`${i}`,
-			// 			point.x * widthScaleFactor,
-			// 			point.y * heightScaleFactor,
-			// 		);
-			// 		context.moveTo(
-			// 			point.x * widthScaleFactor,
-			// 			point.y * heightScaleFactor,
-			// 		);
-			// 		const nextPoint = points[(i + 1) % 4];
-			// 		context.lineTo(
-			// 			nextPoint.x * widthScaleFactor,
-			// 			nextPoint.y * heightScaleFactor,
-			// 		);
-			// 	}
-			// 	context.stroke();
+				console.log(result);
 
-			// 	for (const ball of result.balls) {
-			// 		context.beginPath();
-			// 		context.arc(
-			// 			ball.position.x * widthScaleFactor,
-			// 			ball.position.y * heightScaleFactor,
-			// 			width * 0.02,
-			// 			0,
-			// 			2 * Math.PI,
-			// 		);
-			// 		context.fillStyle = "blue";
-			// 		context.fill();
-			// 	}
-			// });
+				for (const ball of result.balls) {
+					context.beginPath();
+					context.arc(
+						ball.x * widthScaleFactor,
+						ball.y * heightScaleFactor,
+						width * 0.02,
+						0,
+						2 * Math.PI,
+					);
+					context.stroke();
+				}
+			});
 		},
 	);
 
@@ -168,10 +166,25 @@ function Main() {
 			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
 			console.log("Cuebit instance created:", cuebit);
 
-			const resizedFrameCanvas = await createGPUCanvas(
+			const resizedFrameCanvas = await createDebugGPUCanvas(
 				device,
 				frameCapture.frameInfo.width,
 				frameCapture.frameInfo.height,
+				{
+					width: "100cqw",
+					height: "auto",
+					aspectRatio: "1 / 1",
+				},
+			);
+			const tableDebugCanvas = await createDebug2DCanvas(
+				frameCapture.frameInfo.width,
+				frameCapture.frameInfo.height,
+				{
+					width: "100cqw",
+					height: "100cqh",
+					objectFit: "cover",
+					objectPosition: "50% 50%",
+				},
 			);
 
 			if (ac.signal.aborted) {
@@ -179,7 +192,13 @@ function Main() {
 			}
 
 			frameCapture.on(async (frame) => {
-				await loop(frame, cuebit, cameraCanvas, resizedFrameCanvas);
+				await loop(
+					frame,
+					cuebit,
+					cameraCanvas,
+					resizedFrameCanvas,
+					tableDebugCanvas,
+				);
 			});
 		})();
 
@@ -189,8 +208,8 @@ function Main() {
 		};
 	}, [
 		createCameraCanvas,
-		create2DCanvas,
-		createGPUCanvas,
+		createDebug2DCanvas,
+		createDebugGPUCanvas,
 		clearDebugCanvasSpecs,
 	]);
 
@@ -228,11 +247,14 @@ function Main() {
 			{/* 디버깅 */}
 			<div
 				style={{
-					width: "100vw",
-					height: "auto",
-					aspectRatio: "1 / 1",
+					width: "100%",
+					height: "100%",
 					overflow: "scroll",
 					position: "absolute",
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "flex-start",
+					containerType: "size",
 				}}
 			>
 				<div
@@ -241,13 +263,14 @@ function Main() {
 						height: "auto",
 						display: "flex",
 						flexDirection: "row",
+						flexShrink: 0,
+						alignItems: "center",
 					}}
 				>
 					<div
 						style={{
 							width: "100vw",
 							height: "auto",
-							aspectRatio: "1 / 1",
 							display: "flex",
 							alignItems: "center",
 							justifyContent: "center",
@@ -265,11 +288,7 @@ function Main() {
 							}}
 							width={spec.width}
 							height={spec.height}
-							style={{
-								width: "100vw",
-								height: "auto",
-								aspectRatio: "1 / 1",
-							}}
+							style={{ ...spec.style, border: "1px solid white" }}
 						/>
 					))}
 				</div>
