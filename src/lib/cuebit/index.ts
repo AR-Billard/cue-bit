@@ -5,8 +5,8 @@ import { alignTo16, measure } from "@/common";
 import type { ONNX } from "@/lib/onnx";
 import type { Point } from "@/types/physics";
 import type { FrameInfo } from "../capture";
+import hwc2chwShader from "./shaders/hwc2chw.wgsl";
 import maskShader from "./shaders/mask.wgsl";
-import preprocessShader from "./shaders/preprocess.wgsl";
 import resizeShader from "./shaders/resize.wgsl";
 
 /**
@@ -104,12 +104,10 @@ class MaskParams {
 	constructor(table: Detection | null) {
 		const maskIndices: Detection[] = [];
 
-		this.table = table
-			? {
-					detection: table,
-					index: maskIndices.length,
-				}
-			: null;
+		this.table = table && {
+			detection: table,
+			index: maskIndices.length,
+		};
 	}
 
 	public toByteLayout(): Uint32Array {
@@ -272,7 +270,6 @@ function findLargestQuad(
 		const peri = cv.arcLength(cnt, true);
 		cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
 
-		// 꼭짓점 4개일 때만 사각형으로 인정
 		if (approx.rows === 4) {
 			result = [];
 			for (let i = 0; i < 4; i++) {
@@ -281,6 +278,12 @@ function findLargestQuad(
 					y: approx.data32S[i * 2 + 1],
 				});
 			}
+		} else {
+			// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
+			const rect = cv.minAreaRect(cnt);
+			const box = cv.boxPoints(rect);
+
+			result = box.map((p) => ({ x: p.x, y: p.y }));
 		}
 		approx.delete();
 	}
@@ -343,7 +346,7 @@ class Cuebit {
 		this.onnx = onnx;
 		this.frameInfo = frameInfo;
 		this.preprocessShaderModule = device.createShaderModule({
-			code: preprocessShader,
+			code: hwc2chwShader,
 		});
 		this.maskShaderModule = device.createShaderModule({
 			code: maskShader,
@@ -619,8 +622,8 @@ class Cuebit {
 		pass.setPipeline(buffer.resizePipeline);
 		pass.setBindGroup(0, buffer.resizeBindGroup);
 		pass.dispatchWorkgroups(
-			Math.ceil(this.onnx.segementation.input.feeds.image.width / 16),
-			Math.ceil(this.onnx.segementation.input.feeds.image.height / 16),
+			alignTo16(this.onnx.segementation.input.feeds.image.width),
+			alignTo16(this.onnx.segementation.input.feeds.image.height),
 		);
 		pass.end();
 	}
@@ -630,9 +633,8 @@ class Cuebit {
 		pass.setPipeline(buffer.preprocessPipeline);
 		pass.setBindGroup(0, buffer.preprocessBindGroup);
 		pass.dispatchWorkgroups(
-			// TODO: 여기는 모델의 크기
-			Math.ceil(this.frameInfo.width / 16),
-			Math.ceil(this.frameInfo.height / 16),
+			alignTo16(this.onnx.segementation.input.feeds.image.width),
+			alignTo16(this.onnx.segementation.input.feeds.image.height),
 		);
 		pass.end();
 	}
@@ -643,13 +645,14 @@ class Cuebit {
 		const ballClassIds = new Set([0, 1, 3, 4]);
 
 		for (const detection of detections) {
-			// NOTE: 현재 모델은 2가 table임
 			if (detection.classId === 2) {
+				// NOTE: 2: table
 				if (table === null || detection.confidence > table.confidence) {
 					table = detection;
 				}
 			} else if (ballClassIds.has(detection.classId)) {
-				if (detection.confidence > 0.3) {
+				// NOTE: 0,1,3,4: balls
+				if (detection.confidence > 0.25) {
 					balls.push(detection);
 				}
 			}
@@ -791,20 +794,28 @@ class Cuebit {
 			const table = tableMask?.params?.table;
 
 			if (!table) {
+				console.log("테이블 감지 실패");
 				return null;
 			}
 
 			const mask = tableMask.masks[table.index];
 
-			return findLargestQuad(
+			const quad = findLargestQuad(
 				mask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
 			);
+
+			if (mask !== null && quad === null) {
+				console.log("table mask로부터 quad 찾기 실패");
+			}
+			console.log(mask);
+
+			return quad;
 		};
 
 		const points = measure(() => getTablePoints(), "Find Largest Quad");
-		const quad = points ? toQuad(points) : null;
+		const quad = points && toQuad(points);
 
 		const table = quad
 			? {
