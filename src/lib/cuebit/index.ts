@@ -196,13 +196,13 @@ function getTransformMatrix(quad: Quad) {
 			cv.CV_32FC2,
 			[
 				// Top-Left
-				0, 2844,
+				0, 1422,
 				// Bottom-Left
 				0, 0,
 				// Bottom-Right
-				1422, 0,
+				2844, 0,
 				// Top-Right
-				1422, 2844,
+				2844, 1422,
 			],
 		),
 	);
