@@ -1,3 +1,4 @@
+import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { measure } from "@/common";
 import Minimap from "@/components/minimap";
@@ -7,6 +8,7 @@ import useGPUCanvas, { drawTexture } from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import { device, onnx } from "@/lib/onnx";
+import type { Point } from "@/types/physics";
 import styles from "./index.module.css";
 
 /**
@@ -43,6 +45,7 @@ function Main() {
 			cameraCanvas: CanvasHandle<"webgpu">,
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
 			tableDebugCanvas: CanvasHandle<"2d">,
+			normalizedTableDebugCanvas: CanvasHandle<"2d">,
 		) => {
 			if (!isOverlayEnabled) {
 				return;
@@ -62,15 +65,16 @@ function Main() {
 				drawTexture(device, context, buffer.resizedFrameTexture);
 			});
 
+			const table = result.table;
+			if (!table) {
+				return;
+			}
+
 			tableDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 160;
 				const heightScaleFactor = height / 160;
 
 				context.clearRect(0, 0, width, height);
-
-				if (!result.table) {
-					return;
-				}
 
 				context.strokeStyle = "red";
 				context.lineWidth = width * 0.005;
@@ -82,10 +86,10 @@ function Main() {
 				context.beginPath();
 
 				const points = [
-					result.table.quad.points.topLeft,
-					result.table.quad.points.bottomLeft,
-					result.table.quad.points.bottomRight,
-					result.table.quad.points.topRight,
+					table.quad.points.topLeft,
+					table.quad.points.bottomLeft,
+					table.quad.points.bottomRight,
+					table.quad.points.topRight,
 				];
 
 				for (let i = 0; i < 4; i++) {
@@ -114,6 +118,45 @@ function Main() {
 					context.arc(
 						ball.x * widthScaleFactor,
 						ball.y * heightScaleFactor,
+						width * 0.02,
+						0,
+						2 * Math.PI,
+					);
+					context.stroke();
+				}
+			});
+
+			const src = cv.matFromArray(
+				result.balls.length,
+				1,
+				cv.CV_32FC2,
+				result.balls.flatMap((p) => [p.x, p.y]),
+			);
+			const dst = new cv.Mat();
+			cv.perspectiveTransform(src, dst, table.matrix.transform);
+			const transformedPoints: Point[] = [];
+			for (let i = 0; i < result.balls.length; i++) {
+				transformedPoints.push({
+					x: dst.data32F[i * 2],
+					y: dst.data32F[i * 2 + 1],
+				});
+			}
+			src.delete();
+			dst.delete();
+
+			normalizedTableDebugCanvas.draw((context, width, height) => {
+				const widthScaleFactor = width / 2844;
+				const heightScaleFactor = height / 1422;
+
+				context.clearRect(0, 0, width, height);
+				context.strokeStyle = "red";
+				context.lineWidth = width * 0.005;
+
+				for (const point of transformedPoints) {
+					context.beginPath();
+					context.arc(
+						point.x * widthScaleFactor,
+						point.y * heightScaleFactor,
 						width * 0.02,
 						0,
 						2 * Math.PI,
@@ -168,8 +211,8 @@ function Main() {
 
 			const resizedFrameCanvas = await createDebugGPUCanvas(
 				device,
-				frameCapture.frameInfo.width,
-				frameCapture.frameInfo.height,
+				onnx.segementation.input.feeds.image.width,
+				onnx.segementation.input.feeds.image.height,
 				{
 					width: "100cqw",
 					height: "auto",
@@ -186,6 +229,11 @@ function Main() {
 					objectPosition: "50% 50%",
 				},
 			);
+			const normalizedTableDebugCanvas = await createDebug2DCanvas(2844, 1422, {
+				width: "100cqw",
+				height: "auto",
+				aspectRatio: "2 / 1",
+			});
 
 			if (ac.signal.aborted) {
 				return;
@@ -198,6 +246,7 @@ function Main() {
 					cameraCanvas,
 					resizedFrameCanvas,
 					tableDebugCanvas,
+					normalizedTableDebugCanvas,
 				);
 			});
 		})();
@@ -255,6 +304,7 @@ function Main() {
 					alignItems: "center",
 					justifyContent: "flex-start",
 					containerType: "size",
+					scrollSnapType: "x mandatory",
 				}}
 			>
 				<div
