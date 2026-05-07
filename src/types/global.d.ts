@@ -22,3 +22,13 @@ type CanvasHandle<T extends keyof ContextMap> = {
 	canvas: HTMLCanvasElement;
 	draw: (pass: T extends "2d" ? Pass2D : PassWebGPU) => void;
 };
+
+/**
+ * OpenCV Mat의 JS 복사본
+ */
+type MatSnapshot = {
+  rows: number;
+  cols: number;
+  type: number;
+  data: ArrayBufferLike;
+};

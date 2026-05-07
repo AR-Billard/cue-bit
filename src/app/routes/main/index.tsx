@@ -1,6 +1,6 @@
 import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { measure } from "@/common";
+import { measure, restoreMat, withMatScope } from "@/common";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
@@ -126,23 +126,28 @@ function Main() {
 				}
 			});
 
-			const src = cv.matFromArray(
-				result.balls.length,
-				1,
-				cv.CV_32FC2,
-				result.balls.flatMap((p) => [p.x, p.y]),
-			);
-			const dst = new cv.Mat();
-			cv.perspectiveTransform(src, dst, table.matrix.transform);
-			const transformedPoints: Point[] = [];
-			for (let i = 0; i < result.balls.length; i++) {
-				transformedPoints.push({
-					x: dst.data32F[i * 2],
-					y: dst.data32F[i * 2 + 1],
-				});
-			}
-			src.delete();
-			dst.delete();
+			const transformedPoints = withMatScope((track) => {
+				const src = track(
+					cv.matFromArray(
+						result.balls.length,
+						1,
+						cv.CV_32FC2,
+						result.balls.flatMap((p) => [p.x, p.y]),
+					),
+				);
+				const dst = track(new cv.Mat());
+				const transform = track(restoreMat(table.matrix.transform));
+				cv.perspectiveTransform(src, dst, transform);
+				const transformedPoints: Point[] = [];
+				for (let i = 0; i < result.balls.length; i++) {
+					transformedPoints.push({
+						x: dst.data32F[i * 2],
+						y: dst.data32F[i * 2 + 1],
+					});
+				}
+
+				return transformedPoints;
+			});
 
 			normalizedTableDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 2844;

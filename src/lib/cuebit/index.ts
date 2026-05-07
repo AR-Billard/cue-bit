@@ -1,7 +1,7 @@
 import cv from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
-import { alignTo16, measure } from "@/common";
+import { alignTo16, measure, snapshotMat, withMatScope } from "@/common";
 import type { ONNX } from "@/lib/onnx";
 import type { Point } from "@/types/physics";
 import type { FrameInfo } from "../capture";
@@ -179,35 +179,41 @@ function toQuad(points: [Point, Point, Point, Point]): Quad {
 }
 
 function getTransformMatrix(quad: Quad) {
-	const transform = cv.getPerspectiveTransform(
-		cv.matFromArray(4, 1, cv.CV_32FC2, [
-			quad.points.topLeft.x ?? 0,
-			quad.points.topLeft.y ?? 0,
-			quad.points.bottomLeft.x ?? 0,
-			quad.points.bottomLeft.y ?? 0,
-			quad.points.bottomRight.x ?? 0,
-			quad.points.bottomRight.y ?? 0,
-			quad.points.topRight.x ?? 0,
-			quad.points.topRight.y ?? 0,
-		]),
-		cv.matFromArray(
-			4,
-			1,
-			cv.CV_32FC2,
-			[
-				// Top-Left
-				0, 1422,
-				// Bottom-Left
-				0, 0,
-				// Bottom-Right
-				2844, 0,
-				// Top-Right
-				2844, 1422,
-			],
-		),
-	);
+	const [transform, inverseTransform] = withMatScope((track) => {
+		const transform = track(
+			cv.getPerspectiveTransform(
+				cv.matFromArray(4, 1, cv.CV_32FC2, [
+					quad.points.topLeft.x ?? 0,
+					quad.points.topLeft.y ?? 0,
+					quad.points.bottomLeft.x ?? 0,
+					quad.points.bottomLeft.y ?? 0,
+					quad.points.bottomRight.x ?? 0,
+					quad.points.bottomRight.y ?? 0,
+					quad.points.topRight.x ?? 0,
+					quad.points.topRight.y ?? 0,
+				]),
+				cv.matFromArray(
+					4,
+					1,
+					cv.CV_32FC2,
+					[
+						// Top-Left
+						0, 1422,
+						// Bottom-Left
+						0, 0,
+						// Bottom-Right
+						2844, 0,
+						// Top-Right
+						2844, 1422,
+					],
+				),
+			),
+		);
 
-	const inverseTransform = transform.inv(cv.DECOMP_LU);
+		const inverseTransform = track(transform.inv(cv.DECOMP_LU));
+
+		return [snapshotMat(transform), snapshotMat(inverseTransform)];
+	});
 
 	return {
 		transform,
@@ -236,61 +242,60 @@ function findLargestQuad(
 	width: number,
 	height: number,
 ): [Point, Point, Point, Point] | null {
-	// Float32 → 0/255 binary Mat
-	const src = new cv.Mat(height, width, cv.CV_8UC1);
-	for (let i = 0; i < width * height; i++) {
-		src.data[i] = mask[i] > 0.5 ? 255 : 0;
-	}
-
-	const contours = new cv.MatVector();
-	const hierarchy = new cv.Mat();
-	cv.findContours(
-		src,
-		contours,
-		hierarchy,
-		cv.RETR_EXTERNAL,
-		cv.CHAIN_APPROX_SIMPLE,
-	);
-
-	// 면적 가장 큰 컨투어
-	let maxArea = 0;
-	let maxIdx = -1;
-	for (let i = 0; i < contours.size(); i++) {
-		const area = cv.contourArea(contours.get(i));
-		if (area > maxArea) {
-			maxArea = area;
-			maxIdx = i;
+	const result = withMatScope((track) => {
+		// Float32 → 0/255 binary Mat
+		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
+		for (let i = 0; i < width * height; i++) {
+			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
-	}
 
-	let result: Point[] | null = null;
-	if (maxIdx >= 0) {
-		const cnt = contours.get(maxIdx);
-		const approx = new cv.Mat();
-		const peri = cv.arcLength(cnt, true);
-		cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+		const contours = track(new cv.MatVector());
+		const hierarchy = track(new cv.Mat());
+		cv.findContours(
+			src,
+			contours,
+			hierarchy,
+			cv.RETR_EXTERNAL,
+			cv.CHAIN_APPROX_SIMPLE,
+		);
 
-		if (approx.rows === 4) {
-			result = [];
-			for (let i = 0; i < 4; i++) {
-				result.push({
-					x: approx.data32S[i * 2],
-					y: approx.data32S[i * 2 + 1],
-				});
+		// 면적 가장 큰 컨투어
+		let maxArea = 0;
+		let maxIdx = -1;
+		for (let i = 0; i < contours.size(); i++) {
+			const area = cv.contourArea(contours.get(i));
+			if (area > maxArea) {
+				maxArea = area;
+				maxIdx = i;
 			}
-		} else {
-			// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
-			const rect = cv.minAreaRect(cnt);
-			const box = cv.boxPoints(rect);
-
-			result = box.map((p) => ({ x: p.x, y: p.y }));
 		}
-		approx.delete();
-	}
 
-	src.delete();
-	contours.delete();
-	hierarchy.delete();
+		let result: Point[] | null = null;
+		if (maxIdx >= 0) {
+			const cnt = contours.get(maxIdx);
+			const approx = track(new cv.Mat());
+			const peri = cv.arcLength(cnt, true);
+			cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+			if (approx.rows === 4) {
+				result = [];
+				for (let i = 0; i < 4; i++) {
+					result.push({
+						x: approx.data32S[i * 2],
+						y: approx.data32S[i * 2 + 1],
+					});
+				}
+			} else {
+				// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
+				const rect = cv.minAreaRect(cnt);
+				const box = cv.boxPoints(rect);
+
+				result = box.map((p) => ({ x: p.x, y: p.y }));
+			}
+		}
+
+		return result;
+	});
 
 	return result ? [result[0], result[1], result[2], result[3]] : null;
 }
