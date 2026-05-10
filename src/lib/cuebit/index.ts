@@ -140,85 +140,83 @@ function dist(a: Point, b: Point): number {
 }
 
 function toQuad(points: [Point, Point, Point, Point]): Quad {
-	const indexedPoints = points.map((e, i) => ({
-		point: e,
-		index: i,
+	const indexedPoints = points.map((point, index) => ({
+		point,
+		index,
 	}));
 
 	const leftmost = indexedPoints.reduce((acc, cur) =>
 		acc.point.x < cur.point.x ? acc : cur,
 	);
+	const rightmost = indexedPoints[(leftmost.index + 2) % 4];
 
-	const rightmost = points[(leftmost.index + 2) % 4];
-	const [ccwOfLeftmost, cwOfLeftmost] = [
-		points[(leftmost.index + 1) % 4],
-		points[(leftmost.index + 3) % 4],
-	];
+	const topmost = indexedPoints.reduce((acc, cur) =>
+		acc.point.y < cur.point.y ? acc : cur,
+	);
+	const bottommost = indexedPoints[(topmost.index + 2) % 4];
 
 	if (
-		dist(leftmost.point, cwOfLeftmost) > dist(leftmost.point, ccwOfLeftmost)
+		dist(leftmost.point, topmost.point) > dist(leftmost.point, bottommost.point)
 	) {
 		return {
 			points: {
-				topLeft: leftmost.point,
-				bottomLeft: ccwOfLeftmost,
-				bottomRight: rightmost,
-				topRight: cwOfLeftmost,
+				topLeft: bottommost.point,
+				bottomLeft: leftmost.point,
+				bottomRight: topmost.point,
+				topRight: rightmost.point,
 			},
 		};
 	}
 
 	return {
 		points: {
-			topLeft: cwOfLeftmost,
-			bottomLeft: leftmost.point,
-			bottomRight: ccwOfLeftmost,
-			topRight: rightmost,
+			topLeft: leftmost.point,
+			bottomLeft: topmost.point,
+			bottomRight: rightmost.point,
+			topRight: bottommost.point,
 		},
 	};
 }
 
 function getTransformMatrix(quad: Quad) {
-	const [transform, inverseTransform] = withMatScope((track) => {
-		const transform = track(
-			cv.getPerspectiveTransform(
-				cv.matFromArray(4, 1, cv.CV_32FC2, [
-					quad.points.topLeft.x ?? 0,
-					quad.points.topLeft.y ?? 0,
-					quad.points.bottomLeft.x ?? 0,
-					quad.points.bottomLeft.y ?? 0,
-					quad.points.bottomRight.x ?? 0,
-					quad.points.bottomRight.y ?? 0,
-					quad.points.topRight.x ?? 0,
-					quad.points.topRight.y ?? 0,
-				]),
-				cv.matFromArray(
-					4,
-					1,
-					cv.CV_32FC2,
-					[
-						// Top-Left
-						0, 1422,
-						// Bottom-Left
-						0, 0,
-						// Bottom-Right
-						2844, 0,
-						// Top-Right
-						2844, 1422,
-					],
-				),
+	return withMatScope((track) => {
+		const src = track(
+			cv.matFromArray(4, 1, cv.CV_32FC2, [
+				quad.points.topLeft.x ?? 0,
+				quad.points.topLeft.y ?? 0,
+				quad.points.bottomLeft.x ?? 0,
+				quad.points.bottomLeft.y ?? 0,
+				quad.points.bottomRight.x ?? 0,
+				quad.points.bottomRight.y ?? 0,
+				quad.points.topRight.x ?? 0,
+				quad.points.topRight.y ?? 0,
+			]),
+		);
+		const dst = track(
+			cv.matFromArray(
+				4,
+				1,
+				cv.CV_32FC2,
+				[
+					// Top-Left
+					0, 1422,
+					// Bottom-Left
+					0, 0,
+					// Bottom-Right
+					2844, 0,
+					// Top-Right
+					2844, 1422,
+				],
 			),
 		);
-
+		const transform = track(cv.getPerspectiveTransform(src, dst));
 		const inverseTransform = track(transform.inv(cv.DECOMP_LU));
 
-		return [snapshotMat(transform), snapshotMat(inverseTransform)];
+		return {
+			transform: snapshotMat(transform),
+			inverseTransform: snapshotMat(inverseTransform),
+		};
 	});
-
-	return {
-		transform,
-		inverseTransform,
-	};
 }
 
 /**
@@ -814,7 +812,6 @@ class Cuebit {
 			if (mask !== null && quad === null) {
 				console.log("table mask로부터 quad 찾기 실패");
 			}
-			console.log(mask);
 
 			return quad;
 		};
