@@ -2,6 +2,7 @@ import cv from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
 import { alignTo16, measure, snapshotMat, withMatScope } from "@/common";
+import hyperparams from "@/config/hyperparams";
 import type { ONNX } from "@/lib/onnx";
 import type { Point } from "@/types/physics";
 import type { FrameInfo } from "../capture";
@@ -530,7 +531,7 @@ class Cuebit {
 				GPUBufferUsage.COPY_DST,
 			size: alignTo16(
 				4 *
-					10 *
+					hyperparams.maxCandidateCount *
 					onnx.segementation.output.fetchs.protos.width *
 					onnx.segementation.output.fetchs.protos.height,
 			),
@@ -666,9 +667,6 @@ class Cuebit {
 
 	private async postprocess(buffer: BufferSet): Promise<Postprocess | null> {
 		// buffer의 프레임 추론 결과 대기
-		if (buffer.pendingSegmentationInference == null) {
-			return null;
-		}
 		await measure(
 			() => buffer.pendingSegmentationInference,
 			"Pending Inference",
@@ -723,9 +721,9 @@ class Cuebit {
 			0,
 			buffer.maskReadBuffer,
 			0,
-			// 4 byte * 10개 detection * width * height
+			// 4 byte * 후보 detection * width * height
 			4 *
-				10 *
+				hyperparams.maxCandidateCount *
 				this.onnx.segementation.output.fetchs.protos.width *
 				this.onnx.segementation.output.fetchs.protos.height,
 		);
