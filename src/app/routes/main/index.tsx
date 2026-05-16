@@ -44,6 +44,7 @@ function Main() {
 			cuebit: Cuebit,
 			cameraCanvas: CanvasHandle<"webgpu">,
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
+			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
 			tableDebugCanvas: CanvasHandle<"2d">,
 			normalizedTableDebugCanvas: CanvasHandle<"2d">,
 		) => {
@@ -63,6 +64,9 @@ function Main() {
 			});
 			resizedFrameCanvas.draw((device, context, _width, _height) => {
 				drawTexture(device, context, buffer.resizedFrameTexture);
+			});
+			tableMaskDebugCanvas.draw((device, context, _width, _height) => {
+				drawTexture(device, context, buffer.maskFrameTexture);
 			});
 
 			const table = result.table;
@@ -113,6 +117,9 @@ function Main() {
 
 				console.log(result);
 
+				context.strokeStyle = "blue";
+				context.lineWidth = width * 0.002;
+
 				for (const ball of result.balls) {
 					context.beginPath();
 					context.arc(
@@ -154,8 +161,8 @@ function Main() {
 				const heightScaleFactor = height / 1422;
 
 				context.clearRect(0, 0, width, height);
-				context.strokeStyle = "red";
-				context.lineWidth = width * 0.005;
+				context.strokeStyle = "blue";
+				context.lineWidth = width * 0.02;
 
 				for (const point of transformedPoints) {
 					context.beginPath();
@@ -182,8 +189,8 @@ function Main() {
 				// 오디오 스트림은 사용하지 않음
 				audio: false,
 				video: {
-					width: 1000,
-					height: 1000,
+					width: 1920,
+					height: 1080,
 					facingMode: {
 						// 후면 카메라 사용
 						ideal: "environment",
@@ -223,6 +230,20 @@ function Main() {
 					height: "auto",
 					aspectRatio: "1 / 1",
 				},
+				"Resized Frame",
+			);
+			const tableMaskDebugCanvas = await createDebugGPUCanvas(
+				device,
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+				{
+					width: "100cqw",
+					height: "100cqh",
+					objectFit: "cover",
+					objectPosition: "50% 50%",
+					opacity: 0.2,
+				},
+				"Table Mask",
 			);
 			const tableDebugCanvas = await createDebug2DCanvas(
 				frameCapture.frameInfo.width,
@@ -233,12 +254,18 @@ function Main() {
 					objectFit: "cover",
 					objectPosition: "50% 50%",
 				},
+				"Detection Result",
 			);
-			const normalizedTableDebugCanvas = await createDebug2DCanvas(2844, 1422, {
-				width: "100cqw",
-				height: "auto",
-				aspectRatio: "2 / 1",
-			});
+			const normalizedTableDebugCanvas = await createDebug2DCanvas(
+				2844,
+				1422,
+				{
+					width: "100cqw",
+					height: "auto",
+					aspectRatio: "2 / 1",
+				},
+				"Normalized Detection Result",
+			);
 
 			if (ac.signal.aborted) {
 				return;
@@ -250,6 +277,7 @@ function Main() {
 					cuebit,
 					cameraCanvas,
 					resizedFrameCanvas,
+					tableMaskDebugCanvas,
 					tableDebugCanvas,
 					normalizedTableDebugCanvas,
 				);
@@ -325,21 +353,47 @@ function Main() {
 				></div>
 
 				{debugCanvasSpecs.map((spec) => (
-					<canvas
-						key={spec.id}
-						ref={(element) => {
-							if (element) {
-								spec.onMount(element);
-							}
-						}}
-						width={spec.width}
-						height={spec.height}
+					<div
 						style={{
-							...spec.style,
-							backdropFilter: "brightness(0.6)",
-							scrollSnapAlign: "center",
+							width: "100cqw",
+							height: "100cqh",
+							position: "relative",
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							flexShrink: 0,
 						}}
-					/>
+					>
+						<canvas
+							key={spec.id}
+							ref={(element) => {
+								if (element) {
+									spec.onMount(element);
+								}
+							}}
+							width={spec.width}
+							height={spec.height}
+							style={{
+								...spec.style,
+								backdropFilter: "brightness(0.6)",
+								scrollSnapAlign: "center",
+							}}
+						/>
+						<span
+							style={{
+								position: "absolute",
+								top: 8,
+								right: 8,
+								padding: "4px",
+								backgroundColor: "rgba(0, 0, 0, 0.5)",
+								color: "white",
+								fontSize: 12,
+								borderRadius: 4,
+							}}
+						>
+							{spec.name}
+						</span>
+					</div>
 				))}
 			</div>
 

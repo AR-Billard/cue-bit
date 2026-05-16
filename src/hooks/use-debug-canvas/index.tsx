@@ -7,6 +7,7 @@ export type DebugCanvasSpec = {
 	height: number;
 	style: CSSProperties;
 	onMount: (canvas: HTMLCanvasElement) => void;
+    name?: string;
 };
 
 function useDebugCanvas() {
@@ -18,6 +19,7 @@ function useDebugCanvas() {
 			width: number,
 			height: number,
 			style: CSSProperties,
+            name?: string,
 		): Promise<CanvasHandle<"2d">> => {
 			return new Promise((resolve) => {
 				setSpecs((prev) => [
@@ -36,6 +38,7 @@ function useDebugCanvas() {
 								draw: (pass) => pass(context, width, height),
 							});
 						},
+                        name,
 					},
 				]);
 			});
@@ -49,6 +52,7 @@ function useDebugCanvas() {
 			width: number,
 			height: number,
 			style: CSSProperties,
+            name?: string,
 		): Promise<CanvasHandle<"webgpu">> => {
 			return new Promise((resolve) => {
 				setSpecs((prev) => [
@@ -74,6 +78,7 @@ function useDebugCanvas() {
 								draw: (pass) => pass(device, context, width, height),
 							});
 						},
+                        name,
 					},
 				]);
 			});

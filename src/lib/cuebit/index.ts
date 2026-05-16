@@ -78,53 +78,24 @@ interface BufferSet {
 	/**
 	 * 마스크 생성 셰이더에서 사용할 Params 버퍼
 	 */
-	readonly maskParamsBuffer: GPUBuffer;
+	readonly maskCandidateIndexBuffer: GPUBuffer;
 	/**
 	 * 마스크 이미지를 저장하는 버퍼
 	 */
 	readonly maskBuffer: GPUBuffer;
+	/**
+	 * 마스크 이미지의 프레임 텍스처
+	 */
+	readonly maskFrameTexture: GPUTexture;
 	/**
 	 * 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼:
 	 */
 	readonly maskReadBuffer: GPUBuffer;
 }
 
-interface DetectionMaskIndex {
-	readonly detection: Detection;
-	readonly index: number;
-}
-
 interface Postprocess {
-	tableMask: MaskResult | null;
+	tableMask: Float32Array | null;
 	balls: Point[];
-}
-
-class MaskParams {
-	public readonly table: DetectionMaskIndex | null;
-
-	constructor(table: Detection | null) {
-		const maskIndices: Detection[] = [];
-
-		this.table = table && {
-			detection: table,
-			index: maskIndices.length,
-		};
-	}
-
-	public toByteLayout(): Uint32Array {
-		const indices: number[] = [];
-
-		if (this.table) {
-			indices.push(this.table.detection.index);
-		}
-
-		return new Uint32Array([indices.length, ...indices]);
-	}
-}
-
-interface MaskResult {
-	readonly masks: Float32Array[];
-	readonly params: MaskParams;
 }
 
 interface Quad {
@@ -220,23 +191,7 @@ function getTransformMatrix(quad: Quad) {
 	});
 }
 
-/**
- *
- */
-function splitFloat32Array(
-	array: Float32Array,
-	chunkSize: number,
-): Float32Array[] {
-	const chunks: Float32Array[] = [];
-
-	for (let i = 0; i < array.length; i += chunkSize) {
-		chunks.push(array.subarray(i, i + chunkSize));
-	}
-
-	return chunks;
-}
-
-function findLargestQuad(
+function findTableQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
@@ -270,6 +225,7 @@ function findLargestQuad(
 		}
 
 		let result: Point[] | null = null;
+        console.log(maxIdx);
 		if (maxIdx >= 0) {
 			const cnt = contours.get(maxIdx);
 			const approx = track(new cv.Mat());
@@ -285,6 +241,7 @@ function findLargestQuad(
 					});
 				}
 			} else {
+                console.log(`Approximated contour has ${approx.rows} points, expected 4.`);
 				// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
 				const rect = cv.minAreaRect(cnt);
 				const box = cv.boxPoints(rect);
@@ -517,10 +474,9 @@ class Cuebit {
 				entryPoint: "createMask",
 			},
 		});
-		const maskParamsBuffer = this.device.createBuffer({
-			label: "Mask Params Buffer",
-			// candidateCount(1) + candidates(31)
-			size: alignTo16(4 * 32),
+		const maskCandidateIndexBuffer = this.device.createBuffer({
+			label: "Mask Candidate Index Buffer",
+			size: alignTo16(1),
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 		});
 		const maskBuffer = this.device.createBuffer({
@@ -535,6 +491,18 @@ class Cuebit {
 					onnx.segementation.output.fetchs.protos.width *
 					onnx.segementation.output.fetchs.protos.height,
 			),
+		});
+		const maskFrameTexture = this.device.createTexture({
+			size: [
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+			],
+			format: "rgba8unorm",
+			usage:
+				GPUTextureUsage.COPY_SRC |
+				GPUTextureUsage.COPY_DST |
+				GPUTextureUsage.TEXTURE_BINDING |
+				GPUTextureUsage.STORAGE_BINDING,
 		});
 		const maskBindgroup = this.device.createBindGroup({
 			layout: maskPipeline.getBindGroupLayout(0),
@@ -554,7 +522,7 @@ class Cuebit {
 				{
 					binding: 2,
 					resource: {
-						buffer: maskParamsBuffer,
+						buffer: maskCandidateIndexBuffer,
 					},
 				},
 				{
@@ -562,6 +530,10 @@ class Cuebit {
 					resource: {
 						buffer: maskBuffer,
 					},
+				},
+				{
+					binding: 4,
+					resource: maskFrameTexture.createView(),
 				},
 			],
 		});
@@ -588,8 +560,9 @@ class Cuebit {
 			pendingSegmentationInference: null,
 			maskPipeline,
 			maskBindgroup,
-			maskParamsBuffer,
+			maskCandidateIndexBuffer,
 			maskBuffer,
+			maskFrameTexture,
 			maskReadBuffer,
 		};
 	}
@@ -665,42 +638,11 @@ class Cuebit {
 		return [table, balls];
 	}
 
-	private async postprocess(buffer: BufferSet): Promise<Postprocess | null> {
-		// buffer의 프레임 추론 결과 대기
-		await measure(
-			() => buffer.pendingSegmentationInference,
-			"Pending Inference",
-		);
-
-		// buffer의 추론 결과를 staging 버퍼로 복사
-		const stagingCommandEncoder = this.device.createCommandEncoder();
-		stagingCommandEncoder.copyBufferToBuffer(
-			buffer.detectionsBuffer,
-			0,
-			buffer.detectionsReadBuffer,
-			0,
-			buffer.detectionsReadBuffer.size,
-		);
-		this.device.queue.submit([stagingCommandEncoder.finish()]);
-
-		await buffer.detectionsReadBuffer.mapAsync(GPUMapMode.READ);
-		const detections = toDetections(
-			new Float32Array(buffer.detectionsReadBuffer.getMappedRange().slice(0)),
-			this.onnx.segementation.output.fetchs.detections.stride,
-		);
-		buffer.detectionsReadBuffer.unmap();
-
-		// 추론 결과에서 테이블과 공 선택
-		const [table, balls] = this.select(detections);
-
-		// 테이블을 위한 마스크 파라미터 생성
-		const params = new MaskParams(table);
-
-		//
+	private async getMask(buffer: BufferSet, tableDetection: Detection) {
 		this.device.queue.writeBuffer(
-			buffer.maskParamsBuffer,
+			buffer.maskCandidateIndexBuffer,
 			0,
-			params.toByteLayout(),
+			new Uint32Array([tableDetection.index]),
 		);
 
 		const commandEncoder = this.device.createCommandEncoder();
@@ -731,18 +673,46 @@ class Cuebit {
 
 		await buffer.maskReadBuffer.mapAsync(GPUMapMode.READ);
 
-		const masks = splitFloat32Array(
-			new Float32Array(buffer.maskReadBuffer.getMappedRange().slice(0)),
-			this.onnx.segementation.output.fetchs.protos.width *
-				this.onnx.segementation.output.fetchs.protos.height,
+		const mask = new Float32Array(
+			buffer.maskReadBuffer.getMappedRange().slice(0),
 		);
 		buffer.maskReadBuffer.unmap();
 
+		return mask;
+	}
+
+	private async postprocess(buffer: BufferSet): Promise<Postprocess | null> {
+		// buffer의 프레임 추론 결과 대기
+		await measure(
+			() => buffer.pendingSegmentationInference,
+			"Pending Inference",
+		);
+
+		// buffer의 추론 결과를 staging 버퍼로 복사
+		const stagingCommandEncoder = this.device.createCommandEncoder();
+		stagingCommandEncoder.copyBufferToBuffer(
+			buffer.detectionsBuffer,
+			0,
+			buffer.detectionsReadBuffer,
+			0,
+			buffer.detectionsReadBuffer.size,
+		);
+		this.device.queue.submit([stagingCommandEncoder.finish()]);
+
+		await buffer.detectionsReadBuffer.mapAsync(GPUMapMode.READ);
+		const detections = toDetections(
+			new Float32Array(buffer.detectionsReadBuffer.getMappedRange().slice(0)),
+			this.onnx.segementation.output.fetchs.detections.stride,
+		);
+		buffer.detectionsReadBuffer.unmap();
+
+		// 추론 결과에서 테이블과 공 선택
+		const [table, balls] = this.select(detections);
+
+		const tableMask = table && (await this.getMask(buffer, table));
+
 		return {
-			tableMask: {
-				masks,
-				params,
-			},
+			tableMask,
 			balls: balls.map((ball) => ({
 				x: (ball.lt.x + ball.rb.x) / 2,
 				y: (ball.lt.y + ball.rb.y) / 2,
@@ -785,36 +755,29 @@ class Cuebit {
 				},
 			);
 
-		const getTablePoints = () => {
-			const tableMask = postprocessResult?.tableMask;
-
-			if (!tableMask) {
-				return null;
-			}
-
-			const table = tableMask?.params?.table;
-
-			if (!table) {
+		const getTablePoints = (result: Postprocess) => {
+			if (!result.tableMask) {
 				console.log("테이블 감지 실패");
 				return null;
 			}
 
-			const mask = tableMask.masks[table.index];
-
-			const quad = findLargestQuad(
-				mask,
+			const quad = findTableQuad(
+				result.tableMask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
 			);
 
-			if (mask !== null && quad === null) {
+			if (result.tableMask !== null && quad === null) {
 				console.log("table mask로부터 quad 찾기 실패");
 			}
 
 			return quad;
 		};
 
-		const points = measure(() => getTablePoints(), "Find Largest Quad");
+		const points = measure(
+			() => postprocessResult && getTablePoints(postprocessResult),
+			"Find Largest Quad",
+		);
 		const quad = points && toQuad(points);
 
 		const table = quad
