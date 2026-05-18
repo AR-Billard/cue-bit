@@ -42,7 +42,7 @@ jobs:
         run: pnpm run build
         env:
           VITE_APP_VERSION: ${{ github.ref_name }}
-          VITE_BASE_PATH: /AR_project/
+          VITE_BASE_PATH: /cue-bit/
 
       - name: GitHub Pages 환경 설정
         uses: actions/configure-pages@v5
