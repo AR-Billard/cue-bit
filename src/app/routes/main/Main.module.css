@@ -101,7 +101,7 @@
 	transform: translateX(-50%);
 	z-index: 10;
 	width: 60%;
-	max-width: 200px;
+	max-width: 240px;
 	background-color: rgba(20, 20, 20, 0.65);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
@@ -114,7 +114,7 @@
 	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-/* OpenCV 로딩 오버레이 */
+/* 카메라 로딩 오버레이 */
 .loadingOverlay {
 	position: absolute;
 	top: 0;
@@ -143,6 +143,349 @@
 	margin-top: 15px;
 	font-size: 12px;
 	font-weight: bold;
+}
+
+/* 테스트 패널 관련 스타일 */
+/* 테스트/디버그 컨트롤 그룹 */
+.debugRow {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 12px;
+	justify-content: center;
+}
+
+.debugGroup {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.debugLabel {
+	color: rgba(255, 255, 255, 0.4);
+	font-size: 9px;
+	font-weight: bold;
+	letter-spacing: 1.5px;
+	text-align: center;
+}
+
+.debugTrack {
+	display: flex;
+	background-color: rgba(0, 0, 0, 0.5);
+	border-radius: 8px;
+	padding: 2px;
+}
+
+.openTestBtn {
+	background-color: transparent;
+	color: rgba(255, 255, 255, 0.4);
+	padding: 5px 12px;
+	border: none;
+	border-radius: 6px;
+	font-size: 9px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	min-width: 45px;
+}
+
+.openTestBtn.active {
+	background-color: rgba(0, 229, 255, 0.2);
+	color: #00e5ff;
+	box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+.cameraShotPanel {
+	display: grid;
+	gap: 8px;
+	padding: 8px;
+	border-radius: 8px;
+	background-color: rgba(0, 0, 0, 0.32);
+}
+
+.cameraShotPanel label {
+	display: grid;
+	gap: 4px;
+	color: rgba(255, 255, 255, 0.72);
+	font-size: 10px;
+	font-weight: 700;
+}
+
+.cameraShotPanel span {
+	white-space: nowrap;
+}
+
+.cameraShotPanel input[type="range"] {
+	width: 100%;
+}
+
+.cameraSpinPadRow {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+}
+
+.cameraSpinPadRow .spinPad {
+	width: 82px;
+}
+
+.actionRow {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.actionRow:has(> :only-child) {
+	grid-template-columns: 1fr;
+}
+
+.controlVisibilityButton {
+	width: 100%;
+	min-height: 38px;
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 8px;
+	background-color: rgba(0, 0, 0, 0.62);
+	color: rgba(255, 255, 255, 0.84);
+	font-size: 11px;
+	font-weight: 800;
+	cursor: pointer;
+}
+
+.testPanel {
+	position: absolute;
+	top: 200px;
+	right: 15px;
+	width: 200px;
+	background-color: rgba(0, 0, 0, 0.45);
+	backdrop-filter: blur(12px);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 12px;
+	padding: 15px;
+	z-index: 100;
+	color: white;
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+}
+
+.testPanel:active {
+	cursor: grabbing;
+}
+
+.testPanelHeader {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 15px;
+}
+
+.testPanelHeader h3 {
+	margin: 0;
+	font-size: 14px;
+	color: #00e5ff;
+}
+
+.testPanelHeader button {
+	background: none;
+	border: none;
+	color: white;
+	font-size: 20px;
+	cursor: pointer;
+	padding: 0;
+	line-height: 1;
+}
+
+.testGroup {
+	margin-bottom: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.testGroup label {
+	font-size: 10px;
+	color: rgba(255, 255, 255, 0.7);
+}
+
+.testGroup input[type="range"] {
+	width: 100%;
+}
+
+.sliderInputRow {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 58px;
+	align-items: center;
+	gap: 6px;
+}
+
+.powerSliderMeta {
+	display: flex;
+	justify-content: space-between;
+	color: rgba(255, 255, 255, 0.45);
+	font-size: 9px;
+	font-weight: 700;
+}
+
+.numberInput {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 6px;
+	background-color: rgba(0, 0, 0, 0.35);
+	color: white;
+	font-size: 11px;
+	padding: 6px 8px;
+	outline: none;
+}
+
+.compactNumberInput {
+	width: 58px;
+	box-sizing: border-box;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 6px;
+	background-color: rgba(0, 0, 0, 0.35);
+	color: white;
+	font-size: 10px;
+	padding: 5px 6px;
+	outline: none;
+}
+
+.numberInput:focus {
+	border-color: rgba(0, 229, 255, 0.65);
+	box-shadow: 0 0 8px rgba(0, 229, 255, 0.18);
+}
+
+.compactNumberInput:focus {
+	border-color: rgba(0, 229, 255, 0.65);
+	box-shadow: 0 0 8px rgba(0, 229, 255, 0.18);
+}
+
+.powerLevelGroup {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 4px;
+	background-color: rgba(0, 0, 0, 0.35);
+	border-radius: 8px;
+	padding: 3px;
+}
+
+.powerLevelButton {
+	height: 28px;
+	border: none;
+	border-radius: 6px;
+	background-color: transparent;
+	color: rgba(255, 255, 255, 0.55);
+	font-size: 12px;
+	font-weight: 700;
+	cursor: pointer;
+	transition:
+		background-color 0.2s ease,
+		color 0.2s ease,
+		box-shadow 0.2s ease;
+}
+
+.powerLevelButton.active {
+	background-color: rgba(0, 229, 255, 0.22);
+	color: #00e5ff;
+	box-shadow: 0 0 8px rgba(0, 229, 255, 0.28);
+}
+
+.spinPadRow {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.spinPad {
+	position: relative;
+	width: 92px;
+	aspect-ratio: 1;
+	border: none;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle at 38% 32%,
+		rgba(255, 255, 255, 0.95),
+		rgba(230, 238, 242, 0.9) 35%,
+		rgba(165, 181, 190, 0.92) 100%
+	);
+	box-shadow:
+		inset -10px -12px 18px rgba(0, 0, 0, 0.2),
+		inset 8px 8px 14px rgba(255, 255, 255, 0.65),
+		0 0 0 2px rgba(255, 255, 255, 0.18);
+	cursor: pointer;
+	touch-action: none;
+}
+
+.spinPad::before {
+	content: "";
+	position: absolute;
+	inset: 18%;
+	border: 1px dashed rgba(0, 0, 0, 0.28);
+	border-radius: 50%;
+}
+
+.spinGuideHorizontal,
+.spinGuideVertical {
+	position: absolute;
+	background-color: rgba(0, 0, 0, 0.24);
+	pointer-events: none;
+}
+
+.spinGuideHorizontal {
+	left: 13%;
+	right: 13%;
+	top: 50%;
+	height: 1px;
+}
+
+.spinGuideVertical {
+	top: 13%;
+	bottom: 13%;
+	left: 50%;
+	width: 1px;
+}
+
+.spinMarker {
+	position: absolute;
+	width: 13px;
+	height: 13px;
+	border-radius: 50%;
+	background-color: #ff4757;
+	border: 2px solid white;
+	box-shadow: 0 0 10px rgba(255, 71, 87, 0.65);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+.spinResetButton {
+	width: 52px;
+	height: 28px;
+	border: none;
+	border-radius: 6px;
+	background-color: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.8);
+	font-size: 11px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.spinInputGrid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 6px;
+}
+
+.spinInputGrid label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.spinInputGrid span {
+	color: rgba(255, 255, 255, 0.55);
+	font-size: 9px;
+	font-weight: 700;
 }
 
 /* 에러 메시지 */

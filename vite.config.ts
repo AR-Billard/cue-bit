@@ -1,11 +1,7 @@
-import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
-import wasm from "vite-plugin-wasm";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-/**
- * 원격 디버깅을 위한 chii 셋업 플러그인
- */
 function chii(host: string, port: number): Plugin {
 	let started = false;
 
@@ -17,7 +13,7 @@ function chii(host: string, port: number): Plugin {
 			}
 			started = true;
 
-			// @ts-expect-error - chii 타입 정의가 없음
+			// @ts-expect-error chii has no bundled TypeScript declaration.
 			import("chii")
 				.then((chii) => {
 					chii.start({ port });
@@ -41,19 +37,13 @@ function chii(host: string, port: number): Plugin {
 export default defineConfig((config) => {
 	const env = loadEnv(config.mode, process.cwd(), "");
 
-	const chiiHost = env["VITE_CHII_HOST"] || "localhost";
+	const chiiHost = env["VITE_CHII_HOST"] || "localhost:8080";
 	const chiiPort = Number(env["VITE_CHII_PORT"]) || 8080;
 
 	return {
 		base: env["VITE_BASE_PATH"] ?? "/",
-		plugins: [
-			react(), // React 지원
-			wasm(), // WASM 로딩 (OpenCV 등)
-			tsconfigPaths(), // tsconfig의 paths 별칭 적용
-			chii(chiiHost, chiiPort), // 원격 디버깅 (모바일 테스트용)
-		],
+		plugins: [react(), tsconfigPaths(), chii(chiiHost, chiiPort)],
 		server: {
-			// 모든 호스트에서 접근 허용 (모바일 테스트 시 필요)
 			allowedHosts: true,
 		},
 	};

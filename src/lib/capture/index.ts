@@ -1,7 +1,5 @@
 /**
- * 프레임 캡처하는 유틸 생성
- * @param track
- * @returns
+ * MediaStreamTrackProcessor를 사용하여 비디오 트랙에서 프레임을 캡처하는 유틸리티
  */
 async function createFrameCapture(
 	signal: AbortSignal,
@@ -12,7 +10,7 @@ async function createFrameCapture(
 	});
 	const reader = processor.readable.getReader();
 
-	// 프레임 하나 읽어서 실제데이터 크기 계산
+	// 초기 프레임을 읽어 크기 및 할당 사이즈 결정
 	const { value: frame, done } = await reader.read();
 	if (done || !frame) {
 		throw new Error("Failed to read video frame");
@@ -25,6 +23,9 @@ async function createFrameCapture(
 		width,
 		height,
 		allocationSize,
+		/**
+		 * 유입되는 각 비디오 프레임을 처리할 콜백 등록
+		 */
 		on: async (callback: (frame: VideoFrame) => Promise<void>) => {
 			while (!signal.aborted) {
 				const { value: frame, done } = await reader.read();
