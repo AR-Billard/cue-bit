@@ -215,6 +215,7 @@ function Main() {
 			);
 
 			if (ac.signal.aborted) {
+				console.log("Initialization aborted");
 				return;
 			}
 
