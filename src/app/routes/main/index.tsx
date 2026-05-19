@@ -8,6 +8,7 @@ import useGPUCanvas, { drawTexture } from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import { device, onnx } from "@/lib/onnx";
+import { Simulation2D } from "@/lib/physics";
 import type { Point } from "@/types/physics";
 import styles from "./index.module.css";
 
@@ -42,6 +43,7 @@ function Main() {
 		async (
 			frame: VideoFrame,
 			cuebit: Cuebit,
+			simulation: Simulation2D,
 			cameraCanvas: CanvasHandle<"webgpu">,
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
@@ -176,6 +178,10 @@ function Main() {
 					context.stroke();
 				}
 			});
+
+            simulation.updateBallPositionsMeters({
+
+            });
 		},
 	);
 
@@ -272,10 +278,13 @@ function Main() {
 				return;
 			}
 
+			const simulation = new Simulation2D();
+
 			frameCapture.on(async (frame) => {
 				await loop(
 					frame,
 					cuebit,
+					simulation,
 					cameraCanvas,
 					resizedFrameCanvas,
 					tableMaskDebugCanvas,
@@ -413,12 +422,16 @@ function Main() {
 					<h1 className={styles.title}>
 						Cue<span className={styles.titleAccent}>bit</span>
 					</h1>
-					<p className={styles.subtitle}>Real-time Trajectory</p>
+					<p className={styles.subtitle}>
+						{"\uc2e4\uc2dc\uac04 \uada4\uc801 \uac00\uc774\ub4dc"}
+					</p>
 				</div>
 				{isOverlayEnabled && (
 					<div className={styles.analyzingBadge}>
 						<div className={styles.analyzingDot} />
-						<span className={styles.analyzingText}>실시간 분석 중...</span>
+						<span className={styles.analyzingText}>
+							{"\uc2e4\uc2dc\uac04 \uc608\uce21 \uc911"}
+						</span>
 					</div>
 				)}
 			</div>

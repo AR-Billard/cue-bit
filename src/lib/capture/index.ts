@@ -13,9 +13,7 @@ export interface FrameCapture {
 }
 
 /**
- * 프레임 캡처하는 유틸 생성
- * @param track
- * @returns
+ * MediaStreamTrackProcessor를 사용하여 비디오 트랙에서 프레임을 캡처하는 유틸리티
  */
 async function createFrameCapture(
 	signal: AbortSignal,
@@ -27,8 +25,8 @@ async function createFrameCapture(
 	const reader = processor.readable.getReader();
 
 	// 실제 프레임 크기를 얻기 위해 첫 프레임을 미리 읽음
-	const { value: firstFrame } = await reader.read();
-	if (!firstFrame) {
+	const { value: firstFrame, done } = await reader.read();
+	if (done || !firstFrame) {
 		throw new Error("첫 프레임을 읽지 못함");
 	}
 	const width = firstFrame.displayWidth;

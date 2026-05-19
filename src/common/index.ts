@@ -86,3 +86,15 @@ export function restoreMat(snap: MatSnapshot): cv.Mat {
 	mat.data.set(new Uint8Array(snap.data));
 	return mat;
 }
+
+/**
+ *  값을 min-max 범위로 클램프
+ * @param value
+ * @param min
+ * @param max
+ * @returns
+ */
+export function clampValue(value: number, min: number, max: number) {
+	if (!Number.isFinite(value)) return min;
+	return Math.max(min, Math.min(max, value));
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import styles from "./DevLog.module.css";
+import styles from "./dev_log.module.css";
 
 interface LogEntry {
 	id: number;
@@ -9,20 +9,14 @@ interface LogEntry {
 }
 
 /**
- * 개발 모드에서만 표시되는 로그 토스트 패널.
- *
- * pino 로거의 warn/error 레벨 로그를 화면 하단에 실시간으로 표시합니다.
- * 스마트폰 테스트 시 브라우저 콘솔 없이도 오류를 확인할 수 있습니다.
- *
- * ⚠️ import.meta.env.DEV가 true인 개발 환경에서만 렌더링됩니다.
- *    배포 시에는 아무것도 표시되지 않습니다.
+ * 개발 모드에서 로그를 화면에 표시하는 토스트 패널
+ * console.warn 및 console.error를 가로채서 UI에 노출함
  */
 function DevLog() {
 	const [logs, setLogs] = useState<LogEntry[]>([]);
 	const idRef = useRef(0);
 
 	useEffect(() => {
-		// 개발 환경에서만 console.warn, console.error를 가로채서 UI에 표시
 		const originalWarn = console.warn;
 		const originalError = console.error;
 
@@ -35,8 +29,7 @@ function DevLog() {
 			const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
 
 			setLogs((prev) => [
-				// 최대 5개까지만 표시
-				...prev.slice(-4),
+				...prev.slice(-4), // 최근 5개 로그만 유지
 				{ id: idRef.current++, level, message, timestamp },
 			]);
 		};
@@ -52,13 +45,12 @@ function DevLog() {
 		};
 
 		return () => {
-			// 컴포넌트 언마운트 시 원래 console 복원
 			console.warn = originalWarn;
 			console.error = originalError;
 		};
 	}, []);
 
-	// 로그 항목 3초 후 자동 제거
+	// 3초 후 로그 자동 제거
 	useEffect(() => {
 		if (logs.length === 0) return;
 		const timer = setTimeout(() => {
@@ -86,7 +78,7 @@ function DevLog() {
 }
 
 /**
- * 개발 환경에서만 DevLog를 렌더링하는 래퍼
+ * 개발 환경에서만 DevLog를 렌더링하는 래퍼 컴포넌트
  */
 function DevLogWrapper() {
 	if (!import.meta.env.DEV) return null;

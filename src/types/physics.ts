@@ -1,95 +1,98 @@
-/**
- * 물리 엔진 결과값 타입 정의
- *
- * ⚠️ 이 파일은 프론트엔드 ↔ 물리엔진 팀 간의 "약속"입니다.
- * 물리엔진 팀은 이 타입에 맞춰서 결과값을 반환해주세요.
- * 프론트엔드는 이 타입만 보고 AR 화면을 그립니다.
- */
-
-// ─────────────────────────────────────────
-// 기본 타입
-// ─────────────────────────────────────────
-
-/** 2D 좌표 (탑뷰 좌표계 기준, 단위: px) */
+// Project-wide billiards table coordinates use meter units.
+// Origin is the table's top-left corner. x grows right, y grows down.
+// Standard table size is 2.84m x 1.42m.
 export interface Point {
 	readonly x: number;
 	readonly y: number;
 }
 
-/** 당구공 한 개의 상태 */
-export interface Ball {
-	/** 공의 현재 중심 좌표 */
-	position: Point;
-	/** 공의 반지름 (px) */
-	radius: number;
-}
+export type MeterPoint = Point;
 
-// ─────────────────────────────────────────
-// 물리 엔진 입력값 (프론트 → 물리엔진)
-// ─────────────────────────────────────────
+export type BallPositions = Record<string, MeterPoint>;
 
-/** 스핀(회전) 정보 */
-export interface Spin {
-	/**
-	 * 수평 스핀 (-1.0 ~ 1.0)
-	 *  -1.0 = 최대 왼쪽 사이드,  1.0 = 최대 오른쪽 사이드
-	 */
-	horizontal: number;
-	/**
-	 * 수직 스핀 (-1.0 ~ 1.0)
-	 *  -1.0 = 최대 아래 회전(드로),  1.0 = 최대 위 회전(팔로우)
-	 */
-	vertical: number;
-}
+/**
+ * @deprecated Use BallPositions for integration code. This fixed 3-ball shape is
+ * only kept as a legacy helper while older callers are migrated.
+ */
+export type LegacyRequiredBallPositions = BallPositions & {
+	cueBall: MeterPoint;
+	red: MeterPoint;
+	yellow: MeterPoint;
+};
 
-/** 사용자가 설정한 타격 정보 */
-export interface StrokeInput {
-	/** 수구(흰 공)의 현재 위치 */
-	cueBall: Ball;
-	/** 타격 방향 (수구 → 목적구 방향의 단위벡터) */
-	direction: Point;
-	/**
-	 * 타격 세기 (0.0 ~ 1.0)
-	 *  0.0 = 가장 약하게,  1.0 = 가장 강하게
-	 */
-	force: number;
-	/** 스핀 설정 (선택값 — 없으면 스핀 없음으로 처리) */
-	spin?: Spin;
-}
+/**
+ * @deprecated Use LegacyRequiredBallPositions only for older 3-ball-only code,
+ * and prefer BallPositions for new multi-ball integrations.
+ */
+export type RequiredBallPositions = LegacyRequiredBallPositions;
 
-// ─────────────────────────────────────────
-// 물리 엔진 출력값 (물리엔진 → 프론트)
-// ─────────────────────────────────────────
+export type {
+	DetectedBall,
+	DetectedCue,
+	DetectedHitPoint,
+	DetectedShot,
+	DetectedState,
+} from "./detection";
 
-/** 공 한 개의 예측 이동 경로 */
 export interface BallTrajectory {
-	/** 어떤 공인지 구분하는 ID (예: "cue", "red", "yellow") */
 	ballId: string;
-	/**
-	 * 이동 경로를 이루는 좌표 배열
-	 * 순서대로 연결하면 예측 궤적선이 됨
-	 * 예: [{x:100,y:200}, {x:150,y:180}, ...]
-	 */
-	path: Point[];
-	/**
-	 * 쿠션에 부딪힌 좌표들 (경로 중 반사가 일어난 지점)
-	 * 프론트에서 반사 포인트 표시할 때 사용
-	 */
-	cushionPoints: Point[];
+	waypoints: MeterPoint[];
 }
 
-/** 물리 엔진이 최종적으로 반환하는 결과값 */
+export type PhysicsEventType = "ball-collision" | "cushion-hit";
+
+export type CushionSide = "top" | "bottom" | "left" | "right";
+
+export interface PhysicsEvent {
+	type: PhysicsEventType;
+	step: number;
+	position: MeterPoint;
+	ballId: string;
+	otherBallId?: string;
+	cushionSide?: CushionSide;
+}
+
+export type FinalBallPositions = Record<string, MeterPoint>;
+
+export interface PhysicsBallResult {
+	start: MeterPoint;
+	end: MeterPoint;
+}
+
+export type PhysicsBallResults = Record<string, PhysicsBallResult>;
+
+export type PhysicsCollision = Omit<PhysicsEvent, "step"> & {
+	step?: number;
+};
+
+export interface PhysicsSummary {
+	stepCount: number;
+	stopped: boolean;
+	firstHitBallId?: string;
+	firstCushionSide?: CushionSide;
+	travelDistanceByBall: Record<string, number>;
+	trajectoryDistanceByBall?: Record<string, number>;
+	finalPositions: FinalBallPositions;
+}
+
 export interface PhysicsResult {
-	/** 각 공의 예측 궤적 배열 */
+	/** Public, human-readable ball result: start and final position by ball id. */
+	balls: PhysicsBallResults;
+	/** Public collision/cushion records. Use position for the event point. */
+	collisions: PhysicsCollision[];
+	/** Detailed trajectory points kept for getImage() and advanced rendering. */
 	trajectories: BallTrajectory[];
-	/**
-	 * 득점 여부 (선택값)
-	 *  true = 이 타격으로 득점 예상
-	 */
-	isScoring?: boolean;
-	/**
-	 * 시뮬레이션 소요 시간 (ms) — 성능 측정용
-	 * 물리엔진 팀이 채워주면 됩니다
-	 */
-	simulationTimeMs?: number;
+	/** Detailed event records kept for debugging and compatibility. */
+	events: PhysicsEvent[];
+	summary: PhysicsSummary;
+}
+
+export interface PredictShotInput {
+	balls: BallPositions;
+	/** Shot angle in degrees. 0=right, 90=down, 180=left, 270=up. */
+	angleDeg: number;
+	power: number;
+	maxSteps?: number;
+	sideSpin?: number;
+	topSpin?: number;
 }
