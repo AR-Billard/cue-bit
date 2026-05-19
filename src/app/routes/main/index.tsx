@@ -297,13 +297,20 @@ function Main() {
 	]);
 
 	return (
-		<div className={styles.container}>
+		<div
+			className={styles.container}
+			style={{
+				width: "100vw",
+				height: "100vh",
+				containerType: "size",
+			}}
+		>
 			{/* 카메라 프레임 */}
 			<div
 				style={{
 					position: "absolute",
-					width: "100%",
-					height: "100%",
+					width: "100cqw",
+					height: "100cwh",
 				}}
 			>
 				{cameraCanvasSpec === null ? (
@@ -318,8 +325,8 @@ function Main() {
 						width={cameraCanvasSpec.width}
 						height={cameraCanvasSpec.height}
 						style={{
-							width: "100%",
-							height: "100%",
+							width: "100cqw",
+							height: "100cqh",
 							objectFit: "cover",
 							objectPosition: "50% 50%",
 						}}
@@ -330,14 +337,13 @@ function Main() {
 			{/* 디버깅 */}
 			<div
 				style={{
-					width: "100%",
-					height: "100%",
+					width: "100cqw",
+					height: "100cqh",
 					overflow: "scroll",
 					position: "absolute",
 					display: "flex",
 					alignItems: "center",
 					justifyContent: "flex-start",
-					containerType: "size",
 					scrollSnapType: "x mandatory",
 				}}
 			>
