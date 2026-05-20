@@ -86,3 +86,7 @@ export function restoreMat(snap: MatSnapshot): cv.Mat {
 	mat.data.set(new Uint8Array(snap.data));
 	return mat;
 }
+
+export function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}

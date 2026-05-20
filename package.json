@@ -10,6 +10,7 @@
         "preview": "vite preview"
     },
     "dependencies": {
+        "@dimforge/rapier3d": "^0.19.3",
         "@techstark/opencv-js": "4.12.0-release.1",
         "@types/dom-mediacapture-transform": "^0.1.11",
         "chii": "^1.15.5",
@@ -17,12 +18,13 @@
         "modern-normalize": "^3.0.1",
         "onnxruntime-web": "^1.24.3",
         "pino": "^10.3.1",
+        "pixi.js": "^8.18.1",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "react-router": "^7.13.1"
     },
     "devDependencies": {
-		"@biomejs/biome": "^2.4.8",
+        "@biomejs/biome": "^2.4.8",
         "@eslint/js": "^9.39.1",
         "@types/node": "^24.10.1",
         "@types/react": "^19.2.7",

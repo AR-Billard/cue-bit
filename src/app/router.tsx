@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { paths } from "@/config/paths";
 import Main from "./routes/main";
+import Physics from "./routes/physics";
 
 function AppRouter() {
 	return (
@@ -9,6 +10,7 @@ function AppRouter() {
 				<Route index element={<Navigate to={paths.main.path} />} />
 
 				<Route path={paths.main.path} element={<Main />} />
+				<Route path={paths.physics.path} element={<Physics />} />
 			</Routes>
 		</BrowserRouter>
 	);

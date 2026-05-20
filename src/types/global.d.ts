@@ -27,8 +27,22 @@ type CanvasHandle<T extends keyof ContextMap> = {
  * OpenCV Mat의 JS 복사본
  */
 type MatSnapshot = {
-  rows: number;
-  cols: number;
-  type: number;
-  data: ArrayBufferLike;
+	readonly rows: number;
+	readonly cols: number;
+	readonly type: number;
+	readonly data: ArrayBufferLike;
+};
+
+type Vector2 = {
+	readonly x: number;
+	readonly y: number;
+};
+
+type Ball = {
+	readonly position: Vector2;
+};
+
+type Trajectory = {
+	target: Vector3;
+	others: Vector3[];
 };
