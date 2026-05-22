@@ -8,7 +8,7 @@ import useGPUCanvas, { drawTexture } from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import { device, onnx } from "@/lib/onnx";
-import type { Point } from "@/types/physics";
+import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
 
 /**
@@ -42,11 +42,13 @@ function Main() {
 		async (
 			frame: VideoFrame,
 			cuebit: Cuebit,
+			simulator: Simulator,
 			cameraCanvas: CanvasHandle<"webgpu">,
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
 			tableDebugCanvas: CanvasHandle<"2d">,
 			normalizedTableDebugCanvas: CanvasHandle<"2d">,
+			trajectoryDebugCanvas: CanvasHandle<"2d">,
 		) => {
 			if (!isOverlayEnabled) {
 				return;
@@ -145,7 +147,7 @@ function Main() {
 				const dst = track(new cv.Mat());
 				const transform = track(restoreMat(table.matrix.transform));
 				cv.perspectiveTransform(src, dst, transform);
-				const transformedPoints: Point[] = [];
+				const transformedPoints: Vector2[] = [];
 				for (let i = 0; i < result.balls.length; i++) {
 					transformedPoints.push({
 						x: dst.data32F[i * 2],
@@ -162,9 +164,20 @@ function Main() {
 
 				context.clearRect(0, 0, width, height);
 				context.strokeStyle = "blue";
-				context.lineWidth = width * 0.02;
+				context.lineWidth = width * 0.002;
+				context.fillStyle = "red";
+				context.font = `${width * 0.05}px Arial`;
+				context.textAlign = "center";
+				context.textBaseline = "bottom";
 
+
+				let i = 0;
 				for (const point of transformedPoints) {
+					context.fillText(
+						`${i}`,
+						point.x * widthScaleFactor,
+						point.y * heightScaleFactor,
+					);
 					context.beginPath();
 					context.arc(
 						point.x * widthScaleFactor,
@@ -173,6 +186,74 @@ function Main() {
 						0,
 						2 * Math.PI,
 					);
+					context.stroke();
+					i++;
+				}
+			});
+
+			const scaledPoints = transformedPoints.map((p) => ({
+				x: p.x * 0.001,
+				y: p.y * 0.001,
+			}));
+
+			console.log("Transformed and scaled points:", scaledPoints);
+
+			// const [initialTrajectory, step] = simulator.simulate(
+			// 	{ x: 0.5, y: 0.5 },
+			// 	[],
+			// 	Math.PI / 4,
+			// 	0.0001,
+			// 	{ x: 0.5, y: 0.5 },
+			// );
+			const [initialTrajectory, step] = simulator.simulate(
+				scaledPoints[0],
+				[],
+				// scaledPoints.slice(1, 3),
+				Math.PI / 1.4,
+				0.0001,
+				{ x: 0.5, y: 0.5 },
+			);
+
+			const trajectories = [initialTrajectory];
+			for (let i = 0; i < 600; i++) {
+				const trajectory = step();
+				trajectories.push(trajectory);
+			}
+
+			// console.log("Simulated trajectories:", trajectories);
+
+			// TODO: Float32Array 로 캐시히트 최적화 해볼수 있을듯
+			trajectoryDebugCanvas.draw((context, width, height) => {
+				const widthScaleFactor = width / 2844;
+				const heightScaleFactor = height / 1422;
+				const balls = [
+					trajectories.map((t) => t.target),
+					// ...trajectories.map((t) => t.others),
+				];
+
+				context.clearRect(0, 0, width, height);
+				context.lineWidth = width * 0.003;
+
+				for (let i = 0; i < balls.length; i++) {
+					const ball = balls[i];
+					context.strokeStyle = i === 0 ? "white" : "yellow";
+
+					context.beginPath();
+					const initialPosition = ball[0];
+					const x = initialPosition.x * 1000 * widthScaleFactor;
+					const y = initialPosition.z * 1000 * heightScaleFactor;
+					context.arc(x, y, width * 0.02, 0, 2 * Math.PI);
+					context.stroke();
+
+					context.beginPath();
+					context.moveTo(x, y);
+					for (let tick = 1; tick < ball.length; tick++) {
+						const position = ball[tick];
+						const x = position.x * 1000 * widthScaleFactor;
+						const y = position.z * 1000 * heightScaleFactor;
+
+						context.lineTo(x, y);
+					}
 					context.stroke();
 				}
 			});
@@ -189,8 +270,8 @@ function Main() {
 				// 오디오 스트림은 사용하지 않음
 				audio: false,
 				video: {
-					width: 1920,
-					height: 1080,
+					width: 1000,
+					height: 1000,
 					facingMode: {
 						// 후면 카메라 사용
 						ideal: "environment",
@@ -221,6 +302,21 @@ function Main() {
 
 			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
 			console.log("Cuebit instance created:", cuebit);
+
+			const simulator = new Simulator({
+				table: {
+					width: 2.844,
+					height: 1.422,
+				},
+				ball: {
+					count: 4,
+					radius: 0.05715 / 2,
+				},
+				physics: {
+					timeStep: 1 / 60,
+				},
+			});
+			console.log("Simulator instance created:", simulator);
 
 			const resizedFrameCanvas = await createDebugGPUCanvas(
 				device,
@@ -268,6 +364,17 @@ function Main() {
 				"Normalized Detection Result",
 			);
 
+			const trajectoryDebugCanvas = await createDebug2DCanvas(
+				2844,
+				1422,
+				{
+					width: "100cqw",
+					height: "auto",
+					aspectRatio: "2 / 1",
+				},
+				"Trajectory",
+			);
+
 			if (ac.signal.aborted) {
 				return;
 			}
@@ -276,11 +383,13 @@ function Main() {
 				await loop(
 					frame,
 					cuebit,
+					simulator,
 					cameraCanvas,
 					resizedFrameCanvas,
 					tableMaskDebugCanvas,
 					tableDebugCanvas,
 					normalizedTableDebugCanvas,
+					trajectoryDebugCanvas,
 				);
 			});
 		})();
