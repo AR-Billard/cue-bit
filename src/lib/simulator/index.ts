@@ -118,6 +118,10 @@ class Simulator {
 			),
 			true,
 		);
+		this.targetBall.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
+		this.targetBall.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
+		this.targetBall.rigidbody.resetForces(true);
+		this.targetBall.rigidbody.resetTorques(true);
 		this.otherBalls.forEach((ball, i) => {
 			if (i < otherBallPositions.length) {
 				const position = otherBallPositions[i];
@@ -125,6 +129,10 @@ class Simulator {
 					new Vector3(position.x, this.config.ball.radius / 2, position.y),
 					true,
 				);
+                ball.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
+                ball.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
+                ball.rigidbody.resetForces(true);
+                ball.rigidbody.resetTorques(true);
 			} else {
 				// 테이블 아래로 이동시켜서 시뮬레이션에 영향 안끼치도록
 				ball.rigidbody.setTranslation(new Vector3(0, -100, 0), false);
