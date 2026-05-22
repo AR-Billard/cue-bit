@@ -4,7 +4,6 @@ import * as ort from "onnxruntime-web/webgpu";
 import { alignTo16, measure, snapshotMat, withMatScope } from "@/common";
 import hyperparams from "@/config/hyperparams";
 import type { ONNX } from "@/lib/onnx";
-import type { Point } from "@/types/physics";
 import type { FrameInfo } from "../capture";
 import hwc2chwShader from "./shaders/hwc2chw.wgsl";
 import maskShader from "./shaders/mask.wgsl";
@@ -95,23 +94,23 @@ interface BufferSet {
 
 interface Postprocess {
 	tableMask: Float32Array | null;
-	balls: Point[];
+	balls: Vector2[];
 }
 
 interface Quad {
 	readonly points: {
-		readonly topLeft: Point;
-		readonly bottomLeft: Point;
-		readonly bottomRight: Point;
-		readonly topRight: Point;
+		readonly topLeft: Vector2;
+		readonly bottomLeft: Vector2;
+		readonly bottomRight: Vector2;
+		readonly topRight: Vector2;
 	};
 }
 
-function dist(a: Point, b: Point): number {
+function dist(a: Vector2, b: Vector2): number {
 	return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function toQuad(points: [Point, Point, Point, Point]): Quad {
+function toQuad(points: [Vector2, Vector2, Vector2, Vector2]): Quad {
 	const indexedPoints = points.map((point, index) => ({
 		point,
 		index,
@@ -195,7 +194,7 @@ function findTableQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
-): [Point, Point, Point, Point] | null {
+): [Vector2, Vector2, Vector2, Vector2] | null {
 	const result = withMatScope((track) => {
 		// Float32 → 0/255 binary Mat
 		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
@@ -224,8 +223,8 @@ function findTableQuad(
 			}
 		}
 
-		let result: Point[] | null = null;
-        console.log(maxIdx);
+		let result: Vector2[] | null = null;
+		console.log(maxIdx);
 		if (maxIdx >= 0) {
 			const cnt = contours.get(maxIdx);
 			const approx = track(new cv.Mat());
@@ -241,7 +240,9 @@ function findTableQuad(
 					});
 				}
 			} else {
-                console.log(`Approximated contour has ${approx.rows} points, expected 4.`);
+				console.log(
+					`Approximated contour has ${approx.rows} points, expected 4.`,
+				);
 				// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
 				const rect = cv.minAreaRect(cnt);
 				const box = cv.boxPoints(rect);
@@ -258,8 +259,8 @@ function findTableQuad(
 
 class Detection {
 	public readonly index: number;
-	public readonly lt: Point;
-	public readonly rb: Point;
+	public readonly lt: Vector2;
+	public readonly rb: Vector2;
 	public readonly confidence: number;
 	public readonly classId: number;
 	public readonly coefficients: Float32Array;
