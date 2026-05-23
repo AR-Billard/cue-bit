@@ -87,14 +87,27 @@ interface BufferSet {
 	 */
 	readonly maskFrameTexture: GPUTexture;
 	/**
+	 * 테이블 마스크 이미지를 저장하는 버퍼
+	 */
+	readonly tableMaskFrameTexture: GPUTexture;
+	/**
+	 * 큐 마스크 이미지를 저장하는 버퍼
+	 */
+	readonly cueMaskFrameTexture: GPUTexture;
+	/**
 	 * 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼:
 	 */
-	readonly maskReadBuffer: GPUBuffer;
+	readonly tableMaskReadBuffer: GPUBuffer;
+	/**
+	 * 큐 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼
+	 */
+	readonly cueMaskReadBuffer: GPUBuffer;
 }
 
 interface Postprocess {
 	tableMask: Float32Array | null;
 	balls: Vector2[];
+	cueMask: Float32Array | null;
 }
 
 interface Quad {
@@ -284,8 +297,11 @@ class Detection {
 function toDetections(detection: Float32Array, chunkSize: number): Detection[] {
 	const detections: Detection[] = [];
 
-	for (let i = 0; i < detection.length; i += chunkSize) {
-		detections.push(new Detection(i, detection.subarray(i, i + chunkSize)));
+	for (let i = 0; i < detection.length; i++) {
+		const offset = i * chunkSize;
+		detections.push(
+			new Detection(i, detection.subarray(offset, offset + chunkSize)),
+		);
 	}
 
 	return detections;
@@ -505,6 +521,22 @@ class Cuebit {
 				GPUTextureUsage.TEXTURE_BINDING |
 				GPUTextureUsage.STORAGE_BINDING,
 		});
+		const tableMaskFrameTexture = this.device.createTexture({
+			size: [
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+			],
+			format: "rgba8unorm",
+			usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+		});
+		const cueMaskFrameTexture = this.device.createTexture({
+			size: [
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+			],
+			format: "rgba8unorm",
+			usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+		});
 		const maskBindgroup = this.device.createBindGroup({
 			layout: maskPipeline.getBindGroupLayout(0),
 			entries: [
@@ -538,7 +570,12 @@ class Cuebit {
 				},
 			],
 		});
-		const maskReadBuffer = this.device.createBuffer({
+		const tableMaskReadBuffer = this.device.createBuffer({
+			label: "Mask Read Buffer",
+			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+			size: maskBuffer.size,
+		});
+		const cueMaskReadBuffer = this.device.createBuffer({
 			label: "Mask Read Buffer",
 			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 			size: maskBuffer.size,
@@ -564,7 +601,10 @@ class Cuebit {
 			maskCandidateIndexBuffer,
 			maskBuffer,
 			maskFrameTexture,
-			maskReadBuffer,
+			tableMaskFrameTexture,
+			cueMaskFrameTexture,
+			tableMaskReadBuffer,
+			cueMaskReadBuffer,
 		};
 	}
 
@@ -617,13 +657,16 @@ class Cuebit {
 		pass.end();
 	}
 
-	private select(detections: Detection[]): [Detection | null, Detection[]] {
+	private select(
+		detections: Detection[],
+	): [Detection | null, Detection[], Detection | null] {
 		let table: Detection | null = null;
 		const balls: Detection[] = [];
-		const ballClassIds = new Set([0, 1, 3, 4]);
+		const ballClassIds = new Set([0, 2, 4, 5]);
+		let cue: Detection | null = null;
 
 		for (const detection of detections) {
-			if (detection.classId === 2) {
+			if (detection.classId === 3) {
 				// NOTE: 2: table
 				if (table === null || detection.confidence > table.confidence) {
 					table = detection;
@@ -633,53 +676,124 @@ class Cuebit {
 				if (detection.confidence > 0.25) {
 					balls.push(detection);
 				}
+			} else if (detection.classId === 1) {
+				if (cue === null || detection.confidence > cue.confidence) {
+					cue = detection;
+				}
 			}
 		}
 
-		return [table, balls];
+		return [table, balls, cue];
 	}
 
-	private async getMask(buffer: BufferSet, tableDetection: Detection) {
-		this.device.queue.writeBuffer(
-			buffer.maskCandidateIndexBuffer,
-			0,
-			new Uint32Array([tableDetection.index]),
+	private async getMask(
+		buffer: BufferSet,
+		tableDetection: Detection,
+		cueDetection: Detection,
+	): Promise<[Float32Array, Float32Array]> {
+		// table mask pass
+		{
+			this.device.queue.writeBuffer(
+				buffer.maskCandidateIndexBuffer,
+				0,
+				new Uint32Array([tableDetection.index]),
+			);
+			const commandEncoder = this.device.createCommandEncoder();
+			const tableMaskPass = commandEncoder.beginComputePass();
+			tableMaskPass.setPipeline(buffer.maskPipeline);
+			tableMaskPass.setBindGroup(0, buffer.maskBindgroup);
+			tableMaskPass.dispatchWorkgroups(
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
+			);
+			tableMaskPass.end();
+			commandEncoder.copyBufferToBuffer(
+				buffer.maskBuffer,
+				0,
+				buffer.tableMaskReadBuffer,
+				0,
+				// 4 byte * 후보 detection * width * height
+				4 *
+					hyperparams.maxCandidateCount *
+					this.onnx.segementation.output.fetchs.protos.width *
+					this.onnx.segementation.output.fetchs.protos.height,
+			);
+			commandEncoder.copyTextureToTexture(
+				{
+					texture: buffer.maskFrameTexture,
+				},
+				{
+					texture: buffer.tableMaskFrameTexture,
+				},
+				[
+					this.onnx.segementation.output.fetchs.protos.width,
+					this.onnx.segementation.output.fetchs.protos.height,
+				],
+			);
+
+			this.device.queue.submit([commandEncoder.finish()]);
+		}
+
+		// cue mask pass
+		{
+			this.device.queue.writeBuffer(
+				buffer.maskCandidateIndexBuffer,
+				0,
+				new Uint32Array([cueDetection.index]),
+			);
+			const commandEncoder = this.device.createCommandEncoder();
+			const cueMaskPass = commandEncoder.beginComputePass();
+			cueMaskPass.setPipeline(buffer.maskPipeline);
+			cueMaskPass.setBindGroup(0, buffer.maskBindgroup);
+			cueMaskPass.dispatchWorkgroups(
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
+			);
+			cueMaskPass.end();
+			commandEncoder.copyBufferToBuffer(
+				buffer.maskBuffer,
+				0,
+				buffer.cueMaskReadBuffer,
+				0,
+				// 4 byte * 후보 detection * width * height
+				4 *
+					hyperparams.maxCandidateCount *
+					this.onnx.segementation.output.fetchs.protos.width *
+					this.onnx.segementation.output.fetchs.protos.height,
+			);
+			commandEncoder.copyTextureToTexture(
+				{
+					texture: buffer.maskFrameTexture,
+				},
+				{
+					texture: buffer.cueMaskFrameTexture,
+				},
+				[
+					this.onnx.segementation.output.fetchs.protos.width,
+					this.onnx.segementation.output.fetchs.protos.height,
+				],
+			);
+			this.device.queue.submit([commandEncoder.finish()]);
+		}
+
+		await Promise.all([
+			buffer.tableMaskReadBuffer.mapAsync(GPUMapMode.READ),
+			buffer.cueMaskReadBuffer.mapAsync(GPUMapMode.READ),
+		]);
+
+		const tableMask = new Float32Array(
+			buffer.tableMaskReadBuffer.getMappedRange().slice(0),
 		);
+		buffer.tableMaskReadBuffer.unmap();
 
-		const commandEncoder = this.device.createCommandEncoder();
-		const maskPass = commandEncoder.beginComputePass();
-		maskPass.setPipeline(buffer.maskPipeline);
-		maskPass.setBindGroup(0, buffer.maskBindgroup);
-		maskPass.dispatchWorkgroups(
-			Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
-			Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
+		const cueMask = new Float32Array(
+			buffer.cueMaskReadBuffer.getMappedRange().slice(0),
 		);
-		maskPass.end();
-		this.device.queue.submit([commandEncoder.finish()]);
+		buffer.cueMaskReadBuffer.unmap();
 
-		// TODO: maskCommandEncoder와 stagingCommandEncoder를 하나의 커맨드 인코더로 합쳐서 해도 될듯
-		const maskStagingCommandEncoder = this.device.createCommandEncoder();
-		maskStagingCommandEncoder.copyBufferToBuffer(
-			buffer.maskBuffer,
-			0,
-			buffer.maskReadBuffer,
-			0,
-			// 4 byte * 후보 detection * width * height
-			4 *
-				hyperparams.maxCandidateCount *
-				this.onnx.segementation.output.fetchs.protos.width *
-				this.onnx.segementation.output.fetchs.protos.height,
-		);
-		this.device.queue.submit([maskStagingCommandEncoder.finish()]);
+		console.log(cueMask);
 
-		await buffer.maskReadBuffer.mapAsync(GPUMapMode.READ);
-
-		const mask = new Float32Array(
-			buffer.maskReadBuffer.getMappedRange().slice(0),
-		);
-		buffer.maskReadBuffer.unmap();
-
-		return mask;
+		return [tableMask, cueMask];
 	}
 
 	private async postprocess(buffer: BufferSet): Promise<Postprocess | null> {
@@ -707,10 +821,14 @@ class Cuebit {
 		);
 		buffer.detectionsReadBuffer.unmap();
 
-		// 추론 결과에서 테이블과 공 선택
-		const [table, balls] = this.select(detections);
+		// 추론 결과에서 테이블, 공, 큐 선택
+		const [table, balls, cue] = this.select(detections);
 
-		const tableMask = table && (await this.getMask(buffer, table));
+		console.log("Detected Table: ", table);
+		console.log("Detected Cue: ", cue);
+
+		const [tableMask, cueMask] =
+			table && cue ? await this.getMask(buffer, table, cue) : [null, null];
 
 		return {
 			tableMask,
@@ -718,6 +836,7 @@ class Cuebit {
 				x: (ball.lt.x + ball.rb.x) / 2,
 				y: (ball.lt.y + ball.rb.y) / 2,
 			})),
+			cueMask,
 		};
 	}
 

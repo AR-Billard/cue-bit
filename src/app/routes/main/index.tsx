@@ -46,6 +46,7 @@ function Main() {
 			cameraCanvas: CanvasHandle<"webgpu">,
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
+			cueMaskDebugCanvas: CanvasHandle<"webgpu">,
 			tableDebugCanvas: CanvasHandle<"2d">,
 			normalizedTableDebugCanvas: CanvasHandle<"2d">,
 			trajectoryDebugCanvas: CanvasHandle<"2d">,
@@ -68,7 +69,10 @@ function Main() {
 				drawTexture(device, context, buffer.resizedFrameTexture);
 			});
 			tableMaskDebugCanvas.draw((device, context, _width, _height) => {
-				drawTexture(device, context, buffer.maskFrameTexture);
+				drawTexture(device, context, buffer.tableMaskFrameTexture);
+			});
+			cueMaskDebugCanvas.draw((device, context, _width, _height) => {
+				drawTexture(device, context, buffer.cueMaskFrameTexture);
 			});
 
 			const table = result.table;
@@ -116,8 +120,6 @@ function Main() {
 					);
 				}
 				context.stroke();
-
-				console.log(result);
 
 				context.strokeStyle = "blue";
 				context.lineWidth = width * 0.002;
@@ -169,7 +171,6 @@ function Main() {
 				context.font = `${width * 0.05}px Arial`;
 				context.textAlign = "center";
 				context.textBaseline = "bottom";
-
 
 				let i = 0;
 				for (const point of transformedPoints) {
@@ -342,6 +343,19 @@ function Main() {
 				},
 				"Table Mask",
 			);
+			const cueMaskDebugCanvas = await createDebugGPUCanvas(
+				device,
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+				{
+					width: "100cqw",
+					height: "100cqh",
+					objectFit: "cover",
+					objectPosition: "50% 50%",
+					opacity: 0.8,
+				},
+				"Cue Mask",
+			);
 			const tableDebugCanvas = await createDebug2DCanvas(
 				frameCapture.frameInfo.width,
 				frameCapture.frameInfo.height,
@@ -387,6 +401,7 @@ function Main() {
 					cameraCanvas,
 					resizedFrameCanvas,
 					tableMaskDebugCanvas,
+					cueMaskDebugCanvas,
 					tableDebugCanvas,
 					normalizedTableDebugCanvas,
 					trajectoryDebugCanvas,
