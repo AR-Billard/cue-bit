@@ -92,7 +92,10 @@ class Simulator {
 		);
 
 		const collider = this.world.createCollider(
-			RAPIER.ColliderDesc.ball(radius).setRestitution(0.9).setFriction(0.2),
+			RAPIER.ColliderDesc.ball(radius)
+				.setRestitution(0.9)
+				.setFriction(0.2)
+				.setDensity(1700),
 			rigidbody,
 		);
 
@@ -129,10 +132,10 @@ class Simulator {
 					new Vector3(position.x, this.config.ball.radius / 2, position.y),
 					true,
 				);
-                ball.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
-                ball.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
-                ball.rigidbody.resetForces(true);
-                ball.rigidbody.resetTorques(true);
+				ball.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
+				ball.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
+				ball.rigidbody.resetForces(true);
+				ball.rigidbody.resetTorques(true);
 			} else {
 				// 테이블 아래로 이동시켜서 시뮬레이션에 영향 안끼치도록
 				ball.rigidbody.setTranslation(new Vector3(0, -100, 0), false);
