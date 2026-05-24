@@ -1,7 +1,14 @@
-import cv from "@techstark/opencv-js";
+import cv, { line } from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
-import { alignTo16, measure, snapshotMat, withMatScope } from "@/common";
+import {
+	alignTo16,
+	exportMatToPNG,
+	measure,
+	rerange,
+	snapshotMat,
+	withMatScope,
+} from "@/common";
 import hyperparams from "@/config/hyperparams";
 import type { ONNX } from "@/lib/onnx";
 import type { FrameInfo } from "../capture";
@@ -107,7 +114,13 @@ interface BufferSet {
 interface Postprocess {
 	tableMask: Float32Array | null;
 	balls: Vector2[];
-	cueMask: Float32Array | null;
+	cue: {
+		bbox: {
+			lt: Vector2;
+			rb: Vector2;
+		};
+		mask: Float32Array | null;
+	} | null;
 }
 
 interface Quad {
@@ -215,6 +228,8 @@ function findTableQuad(
 			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
 
+		// TODO: roi + 노이즈 제거 해야함
+
 		const contours = track(new cv.MatVector());
 		const hierarchy = track(new cv.Mat());
 		cv.findContours(
@@ -237,7 +252,6 @@ function findTableQuad(
 		}
 
 		let result: Vector2[] | null = null;
-		console.log(maxIdx);
 		if (maxIdx >= 0) {
 			const cnt = contours.get(maxIdx);
 			const approx = track(new cv.Mat());
@@ -245,6 +259,8 @@ function findTableQuad(
 			cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
 
 			if (approx.rows === 4) {
+				// 4점이면 그대로 사각형으로 사용
+
 				result = [];
 				for (let i = 0; i < 4; i++) {
 					result.push({
@@ -253,10 +269,8 @@ function findTableQuad(
 					});
 				}
 			} else {
-				console.log(
-					`Approximated contour has ${approx.rows} points, expected 4.`,
-				);
 				// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
+
 				const rect = cv.minAreaRect(cnt);
 				const box = cv.boxPoints(rect);
 
@@ -267,7 +281,58 @@ function findTableQuad(
 		return result;
 	});
 
-	return result ? [result[0], result[1], result[2], result[3]] : null;
+	return result && [result[0], result[1], result[2], result[3]];
+}
+
+function findCue(
+	mask: Float32Array,
+	width: number,
+	height: number,
+	region: { lt: Vector2; rb: Vector2 },
+): [Vector2, Vector2] | null {
+	return withMatScope((track) => {
+		// Float32 → 0/255 binary Mat
+		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
+		for (let i = 0; i < width * height; i++) {
+			src.data[i] = mask[i] > 0.5 ? 255 : 0;
+		}
+
+		const roi = track(
+			src.roi(
+				new cv.Rect(
+					region.lt.x,
+					region.lt.y,
+					region.rb.x - region.lt.x,
+					region.rb.y - region.lt.y,
+				),
+			),
+		);
+
+		const lines = track(new cv.Mat());
+		cv.HoughLinesP(roi, lines, 1, Math.PI / 180, 4, 10, 5);
+
+		let result: [Vector2, Vector2] | null = null;
+		let lineLength = 0;
+		for (let i = 0; i < lines.rows; i++) {
+			const line: [Vector2, Vector2] = [
+				{
+					x: lines.data32S[i * 4] + region.lt.x,
+					y: lines.data32S[i * 4 + 1] + region.lt.y,
+				},
+				{
+					x: lines.data32S[i * 4 + 2] + region.lt.x,
+					y: lines.data32S[i * 4 + 3] + region.lt.y,
+				},
+			];
+
+			if (dist(line[0], line[1]) > lineLength) {
+				lineLength = dist(line[0], line[1]);
+				result = line;
+			}
+		}
+
+		return result;
+	});
 }
 
 class Detection {
@@ -688,11 +753,11 @@ class Cuebit {
 
 	private async getMask(
 		buffer: BufferSet,
-		tableDetection: Detection,
-		cueDetection: Detection,
-	): Promise<[Float32Array, Float32Array]> {
+		tableDetection: Detection | null,
+		cueDetection: Detection | null,
+	): Promise<[Float32Array | null, Float32Array | null]> {
 		// table mask pass
-		{
+		if (tableDetection) {
 			this.device.queue.writeBuffer(
 				buffer.maskCandidateIndexBuffer,
 				0,
@@ -735,7 +800,7 @@ class Cuebit {
 		}
 
 		// cue mask pass
-		{
+		if (cueDetection) {
 			this.device.queue.writeBuffer(
 				buffer.maskCandidateIndexBuffer,
 				0,
@@ -781,17 +846,15 @@ class Cuebit {
 			buffer.cueMaskReadBuffer.mapAsync(GPUMapMode.READ),
 		]);
 
-		const tableMask = new Float32Array(
-			buffer.tableMaskReadBuffer.getMappedRange().slice(0),
-		);
+		const tableMask =
+			tableDetection &&
+			new Float32Array(buffer.tableMaskReadBuffer.getMappedRange().slice(0));
 		buffer.tableMaskReadBuffer.unmap();
 
-		const cueMask = new Float32Array(
-			buffer.cueMaskReadBuffer.getMappedRange().slice(0),
-		);
+		const cueMask =
+			cueDetection &&
+			new Float32Array(buffer.cueMaskReadBuffer.getMappedRange().slice(0));
 		buffer.cueMaskReadBuffer.unmap();
-
-		console.log(cueMask);
 
 		return [tableMask, cueMask];
 	}
@@ -827,8 +890,7 @@ class Cuebit {
 		console.log("Detected Table: ", table);
 		console.log("Detected Cue: ", cue);
 
-		const [tableMask, cueMask] =
-			table && cue ? await this.getMask(buffer, table, cue) : [null, null];
+		const [tableMask, cueMask] = await this.getMask(buffer, table, cue);
 
 		return {
 			tableMask,
@@ -836,7 +898,21 @@ class Cuebit {
 				x: (ball.lt.x + ball.rb.x) / 2,
 				y: (ball.lt.y + ball.rb.y) / 2,
 			})),
-			cueMask,
+			cue: cue && {
+				bbox: {
+					lt: rerange(
+						cue.lt,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+					rb: rerange(
+						cue.rb,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+				},
+				mask: cueMask,
+			},
 		};
 	}
 
@@ -894,11 +970,49 @@ class Cuebit {
 			return quad;
 		};
 
+		const getCuePoints = (result: Postprocess) => {
+			if (!result.cue) {
+				console.log("큐 감지 실패");
+				return null;
+			}
+
+			if (!result.cue.mask) {
+				console.log("큐 마스크 생성 실패");
+				return null;
+			}
+
+			const cue = findCue(
+				result.cue.mask,
+				this.onnx.segementation.output.fetchs.protos.width,
+				this.onnx.segementation.output.fetchs.protos.height,
+				{
+					lt: {
+						x: result.cue.bbox.lt.x,
+						y: result.cue.bbox.lt.y,
+					},
+					rb: {
+						x: result.cue.bbox.rb.x,
+						y: result.cue.bbox.rb.y,
+					},
+				},
+			);
+
+			if (result.cue.mask !== null && cue === null) {
+				console.log("cue mask로부터 큐 끝점 찾기 실패");
+			}
+
+			return cue;
+		};
+
 		const points = measure(
 			() => postprocessResult && getTablePoints(postprocessResult),
 			"Find Largest Quad",
 		);
 		const quad = points && toQuad(points);
+		const line = measure(
+			() => postprocessResult && getCuePoints(postprocessResult),
+			"Find Cue",
+		);
 
 		const table = quad
 			? {
@@ -926,6 +1040,13 @@ class Cuebit {
 		return {
 			table,
 			balls,
+			cue: postprocessResult?.cue && {
+				bbox: postprocessResult.cue.bbox,
+				line: line && {
+					start: line[0],
+					end: line[1],
+				},
+			},
 		};
 	}
 

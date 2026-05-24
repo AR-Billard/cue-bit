@@ -90,3 +90,22 @@ export function restoreMat(snap: MatSnapshot): cv.Mat {
 export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+export function rerange(vector: Vector2, from: number, to: number): Vector2 {
+	const scale = to / from;
+	return {
+		x: vector.x * scale,
+		y: vector.y * scale,
+	};
+}
+
+export function exportMatToPNG(mat: cv.Mat, fileName = "output.png") {
+	const canvas = document.createElement("canvas");
+
+	cv.imshow(canvas, mat);
+
+	const link = document.createElement("a");
+	link.href = canvas.toDataURL("image/png");
+	link.download = fileName;
+	link.click();
+}

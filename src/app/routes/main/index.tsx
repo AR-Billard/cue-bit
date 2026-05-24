@@ -121,6 +121,44 @@ function Main() {
 				}
 				context.stroke();
 
+				if (result.cue?.bbox) {
+					context.strokeStyle = "green";
+					context.lineWidth = width * 0.002;
+
+					context.beginPath();
+
+					context.fillText(
+						"cue",
+						((result.cue.bbox.lt.x + result.cue.bbox.rb.x) / 2) *
+							widthScaleFactor,
+						result.cue.bbox.lt.y * heightScaleFactor,
+					);
+
+					context.rect(
+						result.cue.bbox.lt.x * widthScaleFactor,
+						result.cue.bbox.lt.y * heightScaleFactor,
+						(result.cue.bbox.rb.x - result.cue.bbox.lt.x) * widthScaleFactor,
+						(result.cue.bbox.rb.y - result.cue.bbox.lt.y) * heightScaleFactor,
+					);
+					context.stroke();
+				}
+
+				if (result.cue?.line) {
+					context.strokeStyle = "white";
+					context.lineWidth = width * 0.002;
+
+					context.beginPath();
+					context.moveTo(
+						result.cue.line.start.x * widthScaleFactor,
+						result.cue.line.start.y * heightScaleFactor,
+					);
+					context.lineTo(
+						result.cue.line.end.x * widthScaleFactor,
+						result.cue.line.end.y * heightScaleFactor,
+					);
+					context.stroke();
+				}
+
 				context.strokeStyle = "blue";
 				context.lineWidth = width * 0.002;
 
