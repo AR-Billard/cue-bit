@@ -985,6 +985,7 @@ class Cuebit {
 				result.cue.mask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
+                // NOTE: 나중에 스케일 변환이 필요할수도 있음
 				{
 					lt: {
 						x: result.cue.bbox.lt.x,
