@@ -83,6 +83,8 @@ function HitControlPanel(props: HitControlPanelProps) {
 					flexDirection: "column",
 					alignItems: "center",
 					gap: "12px",
+					userSelect: "none",
+					"-webkit-touch-callout": "none",
 				}}
 			>
 				<div

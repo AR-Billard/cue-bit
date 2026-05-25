@@ -41,7 +41,7 @@ declare global {
 		readonly y: number;
 	};
 
-	type Ball = {
+	type BallSnapshot = {
 		readonly position: Vector3;
 		readonly rotation: Quaternion;
 		readonly linvel: Vector3;
@@ -50,7 +50,7 @@ declare global {
 	};
 
 	type Trajectory = {
-		readonly target: Ball;
-		readonly others: Ball[];
+		readonly target: BallSnapshot;
+		readonly others: BallSnapshot[];
 	};
 }

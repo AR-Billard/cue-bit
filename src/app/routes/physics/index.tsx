@@ -39,16 +39,20 @@ class WorldRenderer {
 		parent.addChild(this.container);
 	}
 
-	private createColliderGfx(color: Color, ball: Ball, scale: number): Graphics {
+	private createColliderGfx(
+		color: Color,
+		snapshot: BallSnapshot,
+		scale: number,
+	): Graphics {
 		const strokeColor = new Color([1, 1, 1, 0.8]);
 
 		const gfx = new Graphics()
-			.circle(0, 0, ball.radius * scale)
+			.circle(0, 0, snapshot.radius * scale)
 			.fill(color)
 			.stroke({ width: 4, color: strokeColor });
 
-		const q = ball.rotation;
-		const surfaceR = ball.radius * scale;
+		const q = snapshot.rotation;
+		const surfaceR = snapshot.radius * scale;
 		const baseDotR = surfaceR * 0.18;
 
 		for (const [lx, ly, lz, color] of WorldRenderer.FACE_POINTS) {
@@ -73,11 +77,11 @@ class WorldRenderer {
 	}
 
 	public sync(trajectory: Trajectory) {
-		const balls: Ball[] = [trajectory.target, ...trajectory.others];
+		const snapshots: BallSnapshot[] = [trajectory.target, ...trajectory.others];
 
 		this.container.removeChildren().forEach((child) => child.destroy());
 
-		balls.forEach((ball, index) => {
+		snapshots.forEach((ball, index) => {
 			const gfx = this.createColliderGfx(
 				WorldRenderer.BALL_COLORS[index],
 				ball,
@@ -97,13 +101,14 @@ class WorldRenderer {
  */
 function Physics() {
 	const hostRef = useRef<HTMLDivElement>(null);
+	const contextRef = useRef<CanvasRenderingContext2D>(null);
 
 	const hitPointRef = useRef<Vector2>({ x: 0.5, y: 0.5 });
 	const hitPowerRef = useRef(0.5);
 	const hitAngleRef = useRef(0);
 
-	const appRef = useRef<Application | null>(null);
-	const rendererRef = useRef<WorldRenderer | null>(null);
+	const appRef = useRef<Application>(null);
+	const rendererRef = useRef<WorldRenderer>(null);
 	const simulatorRef = useRef<Simulator>(
 		new Simulator({
 			table: {
@@ -119,7 +124,7 @@ function Physics() {
 			},
 		}),
 	);
-	const previousTickRef = useRef<() => void | null>(null);
+	const previousTickRef = useRef<() => void>(null);
 
 	const simulate = useCallback(() => {
 		if (!appRef.current || !rendererRef.current) {
@@ -187,7 +192,7 @@ function Physics() {
 				const pixiCanvas = app.canvas;
 				pixiCanvas.style.width = "100cqw";
 				pixiCanvas.style.height = "auto";
-				pixiCanvas.style.aspectRatio = "2 / 1";
+				pixiCanvas.style.aspectRatio = `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`;
 				host.appendChild(pixiCanvas);
 
 				appRef.current = app;
@@ -203,6 +208,70 @@ function Physics() {
 		};
 	}, []);
 
+	const refreshCanvas = useCallback(() => {
+		if (!contextRef.current) {
+			return;
+		}
+
+		const context = contextRef.current;
+		const simulator = simulatorRef.current;
+
+		const [initialTrajactory, step] = simulator.simulate(
+			{ x: 1.422, y: 0.711 },
+			[
+				...Array.from({ length: 3 }, (_, i) => ({
+					x: 1.422 + Math.cos((Math.PI / 3) * 2 * i) * 0.2,
+					y: 0.711 + Math.sin((Math.PI / 3) * 2 * i) * 0.2,
+				})),
+			],
+			-hitAngleRef.current,
+			hitPowerRef.current,
+			hitPointRef.current,
+		);
+
+		const trajectries: Trajectory[] = [initialTrajactory];
+		for (let i = 0; i < 300; i++) {
+			const trajactory = step();
+			trajectries.push(trajactory);
+		}
+
+		context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+		context.strokeStyle = "rgba(255, 255, 255, 0.8)";
+		context.lineWidth = 2;
+		context.beginPath();
+		context.moveTo(
+			initialTrajactory.target.position.x * SCALE,
+			initialTrajactory.target.position.z * SCALE,
+		);
+		for (const trajectory of trajectries) {
+			const { target } = trajectory;
+			const x = target.position.x * SCALE;
+			const y = target.position.z * SCALE;
+
+			context.lineTo(x, y);
+		}
+		context.stroke();
+
+		for (let i = 0; i < initialTrajactory.others.length; i++) {
+			context.strokeStyle = `rgba(0, 125, 255, 1)`;
+			context.lineWidth = 2;
+			context.beginPath();
+			context.moveTo(
+				initialTrajactory.others[i].position.x * SCALE,
+				initialTrajactory.others[i].position.z * SCALE,
+			);
+			for (const trajectory of trajectries) {
+				const { others } = trajectory;
+				const x = others[i].position.x * SCALE;
+				const y = others[i].position.z * SCALE;
+
+				context.lineTo(x, y);
+			}
+			context.stroke();
+		}
+	}, []);
+
 	return (
 		<div
 			style={{
@@ -215,15 +284,40 @@ function Physics() {
 			}}
 		>
 			<div
-				ref={hostRef}
 				style={{
+					position: "relative",
 					width: "100cqw",
 					height: "auto",
-					display: "flex",
-					justifyContent: "center",
-					alignItems: "center",
 				}}
-			/>
+			>
+				<div
+					ref={hostRef}
+					style={{
+						width: "100cqw",
+						height: "auto",
+						display: "flex",
+						justifyContent: "center",
+						alignItems: "center",
+					}}
+				/>
+				<canvas
+					ref={(canvas) => {
+						if (canvas) {
+							contextRef.current = canvas.getContext("2d");
+						}
+					}}
+					width={CANVAS_WIDTH}
+					height={CANVAS_HEIGHT}
+					style={{
+						width: "100cqw",
+						height: "auto",
+						aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
+						position: "absolute",
+						top: 0,
+						left: 0,
+					}}
+				/>
+			</div>
 
 			<HitControlPanel
 				style={{
@@ -237,12 +331,15 @@ function Physics() {
 				}}
 				onHitPointChange={(point) => {
 					hitPointRef.current = point;
+					refreshCanvas();
 				}}
 				onHitPowerChange={(power) => {
 					hitPowerRef.current = power;
+					refreshCanvas();
 				}}
 				onHitAngleChange={(angle) => {
 					hitAngleRef.current = angle;
+					refreshCanvas();
 				}}
 			/>
 
