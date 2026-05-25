@@ -84,7 +84,6 @@ function HitControlPanel(props: HitControlPanelProps) {
 					alignItems: "center",
 					gap: "12px",
 					userSelect: "none",
-					"-webkit-touch-callout": "none",
 				}}
 			>
 				<div

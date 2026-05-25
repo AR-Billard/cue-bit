@@ -279,8 +279,8 @@ function Physics() {
 				height: "100vh",
 				containerType: "size",
 				display: "flex",
-				justifyContent: "center",
-				alignItems: "center",
+				justifyContent: "top",
+				alignItems: "start",
 			}}
 		>
 			<div
