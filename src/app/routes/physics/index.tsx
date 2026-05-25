@@ -100,6 +100,7 @@ function Physics() {
 
 	const hitPointRef = useRef<Vector2>({ x: 0.5, y: 0.5 });
 	const hitPowerRef = useRef(0.5);
+	const hitAngleRef = useRef(0);
 
 	const appRef = useRef<Application | null>(null);
 	const rendererRef = useRef<WorldRenderer | null>(null);
@@ -142,7 +143,7 @@ function Physics() {
 					y: 0.711 + Math.sin((Math.PI / 3) * 2 * i) * 0.2,
 				})),
 			],
-			Math.PI / 3,
+			-hitAngleRef.current,
 			hitPowerRef.current,
 			hitPointRef.current,
 		);
@@ -229,12 +230,19 @@ function Physics() {
 					position: "absolute",
 					bottom: "20px",
 					left: "20px",
+					backgroundColor: "rgba(255, 255, 255, 0.9)",
+					padding: "12px",
+					borderRadius: "8px",
+					boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
 				}}
 				onHitPointChange={(point) => {
 					hitPointRef.current = point;
 				}}
 				onHitPowerChange={(power) => {
 					hitPowerRef.current = power;
+				}}
+				onHitAngleChange={(angle) => {
+					hitAngleRef.current = angle;
 				}}
 			/>
 

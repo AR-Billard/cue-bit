@@ -123,6 +123,10 @@ class Simulator {
 		);
 		this.targetBall.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
 		this.targetBall.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
+		this.targetBall.rigidbody.setRotation(
+			new RAPIER.Quaternion(0, 0, 0, 1),
+			true,
+		);
 		this.targetBall.rigidbody.resetForces(true);
 		this.targetBall.rigidbody.resetTorques(true);
 		this.otherBalls.forEach((ball, i) => {
@@ -134,6 +138,7 @@ class Simulator {
 				);
 				ball.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
 				ball.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
+				ball.rigidbody.setRotation(new RAPIER.Quaternion(0, 0, 0, 1), true);
 				ball.rigidbody.resetForces(true);
 				ball.rigidbody.resetTorques(true);
 			} else {

@@ -13,6 +13,12 @@ type HitControlPanelProps = {
 	 */
 	onHitPointChange: (point: Vector2) => void;
 	onHitPowerChange: (power: number) => void;
+	/**
+	 *
+	 * @param angle radian
+	 * @returns
+	 */
+	onHitAngleChange?: (angle: number) => void;
 	style: React.CSSProperties;
 };
 
@@ -24,6 +30,7 @@ type HitControlPanelProps = {
 function HitControlPanel(props: HitControlPanelProps) {
 	const [hitPoint, setHitPoint] = useState<Vector2>({ x: 0, y: 0 });
 	const [hitPower, setHitPower] = useState(0.5);
+	const [hitAngle, setHitAngle] = useState(0);
 
 	const onHitPointChange = useCallback<PointerEventHandler<HTMLDivElement>>(
 		(event) => {
@@ -34,14 +41,6 @@ function HitControlPanel(props: HitControlPanelProps) {
 			const angle = Math.atan2(y, x);
 			const maxX = Math.abs(Math.cos(angle));
 			const maxY = Math.abs(Math.sin(angle));
-
-			console.log(
-				`Max hit point for angle ${((angle * 180) / Math.PI).toFixed(2)} deg: (${maxX.toFixed(2)}, ${maxY.toFixed(2)})`,
-			);
-
-			console.log(`Raw hit point: (${x.toFixed(2)}, ${y.toFixed(2)})`);
-			console.log(`Hit angle: ${((angle * 180) / Math.PI).toFixed(2)} deg`);
-			console.log(`Clamping to max: (${maxX.toFixed(2)}, ${maxY.toFixed(2)})`);
 
 			const clampedX = Math.max(-maxX, Math.min(maxX, x));
 			const clampedY = Math.max(-maxY, Math.min(maxY, y));
@@ -58,6 +57,18 @@ function HitControlPanel(props: HitControlPanelProps) {
 			const power = parseFloat(event.target.value);
 			setHitPower(power);
 			props.onHitPowerChange(power);
+		},
+		[props],
+	);
+	const onHitAngleChange = useCallback<PointerEventHandler<HTMLDivElement>>(
+		(event) => {
+			const rect = event.currentTarget.getBoundingClientRect();
+			const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+			const y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+
+			const angle = Math.atan2(y, x) + Math.PI;
+			setHitAngle(angle);
+			props.onHitAngleChange?.(angle);
 		},
 		[props],
 	);
@@ -156,6 +167,65 @@ function HitControlPanel(props: HitControlPanelProps) {
 						value={hitPower}
 						onChange={onHitPowerChange}
 					/>
+				</div>
+
+				<div
+					style={{
+						width: "60%",
+						height: "auto",
+						aspectRatio: "1 / 1",
+						borderRadius: "50%",
+						position: "relative",
+						touchAction: "none",
+					}}
+					onPointerDown={onHitAngleChange}
+					onPointerMove={onHitAngleChange}
+				>
+					<div
+						style={{
+							position: "absolute",
+							width: "80%",
+							height: "80%",
+							top: "50%",
+							left: "50%",
+							transform: "translate(-50%, -50%)",
+							border: "1px dashed rgba(0, 0, 0, 0.28)",
+							borderRadius: "50%",
+						}}
+					/>
+
+					<div
+						style={{
+							position: "absolute",
+							width: "100%",
+							height: "100%",
+							rotate: `${-hitAngle}rad`,
+						}}
+					>
+						<div
+							style={{
+								position: "absolute",
+								width: "72%",
+								height: "1px",
+								top: "50%",
+								left: "50%",
+								transform: "translate(-50%, -50%)",
+								border: "1px solid rgba(0, 0, 0, 0.28)",
+							}}
+						/>
+						<div
+							style={{
+								position: "absolute",
+								width: "10%",
+								height: "10%",
+								top: "50%",
+								left: "80%",
+								transform: "translate(-50%, -50%) rotate(45deg)",
+								borderTop: "2px solid rgba(0, 0, 0, 0.28)",
+								borderRight: "2px solid rgba(0, 0, 0, 0.28)",
+							}}
+						/>
+					</div>
 				</div>
 			</div>
 		</div>
