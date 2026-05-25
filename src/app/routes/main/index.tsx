@@ -277,23 +277,23 @@ function Main() {
 					const ball = balls[i];
 					context.strokeStyle = i === 0 ? "white" : "yellow";
 
-					context.beginPath();
-					const initialPosition = ball[0];
-					const x = initialPosition.x * 1000 * widthScaleFactor;
-					const y = initialPosition.z * 1000 * heightScaleFactor;
-					context.arc(x, y, width * 0.02, 0, 2 * Math.PI);
-					context.stroke();
+					// context.beginPath();
+					// const initialPosition = ball[0];
+					// const x = initialPosition.x * 1000 * widthScaleFactor;
+					// const y = initialPosition.z * 1000 * heightScaleFactor;
+					// context.arc(x, y, width * 0.02, 0, 2 * Math.PI);
+					// context.stroke();
 
-					context.beginPath();
-					context.moveTo(x, y);
-					for (let tick = 1; tick < ball.length; tick++) {
-						const position = ball[tick];
-						const x = position.x * 1000 * widthScaleFactor;
-						const y = position.z * 1000 * heightScaleFactor;
+					// context.beginPath();
+					// context.moveTo(x, y);
+					// for (let tick = 1; tick < ball.length; tick++) {
+					// 	const position = ball[tick];
+					// 	const x = position.x * 1000 * widthScaleFactor;
+					// 	const y = position.z * 1000 * heightScaleFactor;
 
-						context.lineTo(x, y);
-					}
-					context.stroke();
+					// 	context.lineTo(x, y);
+					// }
+					// context.stroke();
 				}
 			});
 		},

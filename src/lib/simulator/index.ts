@@ -32,32 +32,28 @@ class Simulator {
 		this.table = [
 			// ground
 			this.createWall(
-				new RAPIER.Vector3(
-					config.table.width / 2,
-					-0.5,
-					config.table.height / 2,
-				),
-				new RAPIER.Vector3(config.table.width, 1, config.table.height),
+				new RAPIER.Vector3(config.table.width / 2, -1, config.table.height / 2),
+				new RAPIER.Vector3(config.table.width / 2, 1, config.table.height / 2),
 			),
 			// left
 			this.createWall(
 				new RAPIER.Vector3(-1, 0, config.table.height / 2),
-				new RAPIER.Vector3(1, 1, config.table.height),
+				new RAPIER.Vector3(1, 5, config.table.height / 2),
 			),
 			// right
 			this.createWall(
 				new RAPIER.Vector3(config.table.width + 1, 0, config.table.height / 2),
-				new RAPIER.Vector3(1, 1, config.table.height),
+				new RAPIER.Vector3(1, 5, config.table.height / 2),
 			),
 			// top
 			this.createWall(
 				new RAPIER.Vector3(config.table.width / 2, 0, -1),
-				new RAPIER.Vector3(config.table.width, 1, 1),
+				new RAPIER.Vector3(config.table.width / 2, 5, 1),
 			),
 			// bottom
 			this.createWall(
 				new RAPIER.Vector3(config.table.width / 2, 0, config.table.height + 1),
-				new RAPIER.Vector3(config.table.width, 1, 1),
+				new RAPIER.Vector3(config.table.width / 2, 5, 1),
 			),
 		];
 		this.targetBall = this.createBall(config.ball.radius);
@@ -66,7 +62,7 @@ class Simulator {
 		);
 	}
 
-	private createWall(position: RAPIER.Vector3, size: RAPIER.Vector3) {
+	private createWall(position: RAPIER.Vector3, halfSize: RAPIER.Vector3) {
 		const rigidbody = this.world.createRigidBody(
 			RAPIER.RigidBodyDesc.fixed().setTranslation(
 				position.x,
@@ -75,9 +71,9 @@ class Simulator {
 			),
 		);
 		const collider = this.world.createCollider(
-			RAPIER.ColliderDesc.cuboid(size.x, size.y, size.z)
+			RAPIER.ColliderDesc.cuboid(halfSize.x, halfSize.y, halfSize.z)
 				.setRestitution(0.7)
-				.setFriction(0.25),
+				.setFriction(0.2),
 			rigidbody,
 		);
 
@@ -88,13 +84,16 @@ class Simulator {
 		const rigidbody = this.world.createRigidBody(
 			RAPIER.RigidBodyDesc.dynamic()
 				.setCcdEnabled(true)
-				.setTranslation(0, 0, 0),
+				.setLinearDamping(0.4)
+				.setAngularDamping(0.6)
+				.setTranslation(0, 0, 0)
+				.setCanSleep(false),
 		);
 
 		const collider = this.world.createCollider(
 			RAPIER.ColliderDesc.ball(radius)
-				.setRestitution(0.9)
-				.setFriction(0.2)
+				.setRestitution(0.95)
+				.setFriction(0.03)
 				.setDensity(1700),
 			rigidbody,
 		);
@@ -116,7 +115,7 @@ class Simulator {
 		this.targetBall.rigidbody.setTranslation(
 			new Vector3(
 				targetBallPosition.x,
-				this.config.ball.radius / 2,
+				this.config.ball.radius,
 				targetBallPosition.y,
 			),
 			true,
@@ -129,7 +128,7 @@ class Simulator {
 			if (i < otherBallPositions.length) {
 				const position = otherBallPositions[i];
 				ball.rigidbody.setTranslation(
-					new Vector3(position.x, this.config.ball.radius / 2, position.y),
+					new Vector3(position.x, this.config.ball.radius, position.y),
 					true,
 				);
 				ball.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
@@ -149,8 +148,20 @@ class Simulator {
 		// );
 		//
 		const initialTrajectory: Trajectory = {
-			target: this.targetBall.rigidbody.translation(),
-			others: this.otherBalls.map((ball) => ball.rigidbody.translation()),
+			target: {
+				position: this.targetBall.rigidbody.translation(),
+				rotation: this.targetBall.rigidbody.rotation(),
+				linvel: this.targetBall.rigidbody.linvel(),
+				angvel: this.targetBall.rigidbody.angvel(),
+				radius: this.config.ball.radius,
+			},
+			others: this.otherBalls.map((ball) => ({
+				position: ball.rigidbody.translation(),
+				rotation: ball.rigidbody.rotation(),
+				linvel: ball.rigidbody.linvel(),
+				angvel: ball.rigidbody.angvel(),
+				radius: this.config.ball.radius,
+			})),
 		};
 		this.targetBall.rigidbody.applyImpulse(
 			new Vector3(power * Math.cos(angle), 0, power * Math.sin(angle)),
@@ -163,8 +174,20 @@ class Simulator {
 				this.world.step();
 
 				return {
-					target: this.targetBall.rigidbody.translation(),
-					others: this.otherBalls.map((ball) => ball.rigidbody.translation()),
+					target: {
+						position: this.targetBall.rigidbody.translation(),
+						rotation: this.targetBall.rigidbody.rotation(),
+						linvel: this.targetBall.rigidbody.linvel(),
+						angvel: this.targetBall.rigidbody.angvel(),
+						radius: this.config.ball.radius,
+					},
+					others: this.otherBalls.map((ball) => ({
+						position: ball.rigidbody.translation(),
+						rotation: ball.rigidbody.rotation(),
+						linvel: ball.rigidbody.linvel(),
+						angvel: ball.rigidbody.angvel(),
+						radius: this.config.ball.radius,
+					})),
 				};
 			},
 		];

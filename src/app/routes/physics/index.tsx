@@ -1,7 +1,6 @@
-import type { Vector3 } from "@dimforge/rapier3d";
 import { Application, Color, Container, Graphics } from "pixi.js";
 import { useEffect, useRef } from "react";
-import { measure, sleep } from "@/common";
+import { sleep } from "@/common";
 import logger from "@/lib/logger";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
@@ -11,10 +10,15 @@ const CANVAS_WIDTH = 2844;
 const CANVAS_HEIGHT = 1422;
 
 class WorldRenderer {
-	private readonly container = new Container();
-	private readonly gfxMap = new Map<number, Graphics>();
-	private readonly scale: number;
-	private readonly ballRadius: number;
+	private static readonly FACE_POINTS: Array<[number, number, number, Color]> =
+		[
+			[1, 0, 0, new Color([1, 0.2, 0.2, 1])], // +X
+			[-1, 0, 0, new Color([0.4, 0, 0, 1])], // -X
+			[0, 1, 0, new Color([0.2, 1, 0.2, 1])], // +Y
+			[0, -1, 0, new Color([0, 0.4, 0, 1])], // -Y
+			[0, 0, 1, new Color([0.4, 0.6, 1, 1])], // +Z
+			[0, 0, -1, new Color([0, 0.1, 0.5, 1])], // -Z
+		];
 	private static readonly BALL_COLORS = [
 		new Color([1, 0, 0, 0.5]),
 		new Color([0, 1, 0, 0.5]),
@@ -28,51 +32,64 @@ class WorldRenderer {
 		new Color([0.5, 1, 0, 0.5]),
 	];
 
-	public constructor(parent: Container, scale: number, ballRadius: number) {
+	private readonly container = new Container();
+	private readonly scale: number;
+
+	public constructor(parent: Container, scale: number) {
 		this.scale = scale;
-		this.ballRadius = ballRadius;
 		parent.addChild(this.container);
 	}
 
-	private createColliderGfx(
-		color: Color,
-		radius: number,
-		scale: number,
-	): Graphics {
+	private createColliderGfx(color: Color, ball: Ball, scale: number): Graphics {
 		const strokeColor = new Color([1, 1, 1, 0.8]);
 
-		return new Graphics()
-			.circle(0, 0, radius * scale)
+		const gfx = new Graphics()
+			.circle(0, 0, ball.radius * scale)
 			.fill(color)
 			.stroke({ width: 4, color: strokeColor });
+
+		const q = ball.rotation;
+		const surfaceR = ball.radius * scale;
+		const baseDotR = surfaceR * 0.18;
+
+		for (const [lx, ly, lz, color] of WorldRenderer.FACE_POINTS) {
+			// v' = v + 2 * q.xyz × (q.xyz × v + q.w * v)
+			const tx = 2 * (q.y * lz - q.z * ly);
+			const ty = 2 * (q.z * lx - q.x * lz);
+			const tz = 2 * (q.x * ly - q.y * lx);
+			const wx = lx + q.w * tx + (q.y * tz - q.z * ty);
+			const wy = ly + q.w * ty + (q.z * tx - q.x * tz);
+			const wz = lz + q.w * tz + (q.x * ty - q.y * tx);
+
+			if (wy < 0) continue;
+
+			const sx = wx * surfaceR;
+			const sy = wz * surfaceR;
+			const dotR = baseDotR * (0.4 + 0.6 * wy);
+
+			gfx.circle(sx, sy, dotR).fill(color);
+		}
+
+		return gfx;
 	}
 
 	public sync(trajectory: Trajectory) {
-		const positions: Vector3[] = [trajectory.target, ...trajectory.others];
+		const balls: Ball[] = [trajectory.target, ...trajectory.others];
 
-		positions.forEach((position, index) => {
-			const gfx =
-				this.gfxMap.get(index) ??
-				(() => {
-					const gfx = this.createColliderGfx(
-						WorldRenderer.BALL_COLORS[index],
-						this.ballRadius,
-						this.scale,
-					);
-					this.gfxMap.set(index, gfx);
-					this.container.addChild(gfx);
-					return gfx;
-				})();
+		this.container.removeChildren().forEach((child) => child.destroy());
 
-			gfx.position.set(position.x * this.scale, position.z * this.scale);
+		balls.forEach((ball, index) => {
+			const gfx = this.createColliderGfx(
+				WorldRenderer.BALL_COLORS[index],
+				ball,
+				this.scale,
+			);
+			gfx.position.set(
+				ball.position.x * this.scale,
+				ball.position.z * this.scale,
+			);
+			this.container.addChild(gfx);
 		});
-
-		for (const [id, gfx] of this.gfxMap) {
-			if (id >= positions.length) {
-				gfx.destroy();
-				this.gfxMap.delete(id);
-			}
-		}
 	}
 }
 
@@ -113,9 +130,9 @@ function Physics() {
 				pixiCanvas.style.aspectRatio = "2 / 1";
 				host.appendChild(pixiCanvas);
 
-				const renderer = new WorldRenderer(app.stage, SCALE, 0.05715 / 2);
+				const renderer = new WorldRenderer(app.stage, SCALE);
 
-				const count = 4;
+				const count = 8;
 
 				const simulator = new Simulator({
 					table: {
@@ -140,25 +157,19 @@ function Physics() {
 						})),
 					],
 					Math.PI / 1.4,
-					0.001,
+					4,
 					{ x: 0.5, y: 0.5 },
 				);
-
-				measure(() => {
-					for (let i = 0; i < 60 * 10; i++) {
-						step();
-					}
-				}, "Simulation 600 frames");
 
 				renderer.sync(initialTrajactory);
 
 				await sleep(1000);
 
-				// app.ticker.add(() => {
-				// 	const trajectory = step();
+				app.ticker.add(() => {
+					const trajectory = step();
 
-				// 	renderer.sync(trajectory);
-				// });
+					renderer.sync(trajectory);
+				});
 			} catch (err) {
 				logger.error(err);
 			}
