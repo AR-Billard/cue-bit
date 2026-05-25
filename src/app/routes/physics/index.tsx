@@ -1,9 +1,8 @@
 import { Application, Color, Container, Graphics } from "pixi.js";
-import { useEffect, useRef } from "react";
-import { sleep } from "@/common";
+import { useCallback, useEffect, useRef } from "react";
+import HitControlPanel from "@/components/hit-params-panel";
 import logger from "@/lib/logger";
 import Simulator from "@/lib/simulator";
-import styles from "./index.module.css";
 
 const SCALE = 1000;
 const CANVAS_WIDTH = 2844;
@@ -99,6 +98,66 @@ class WorldRenderer {
 function Physics() {
 	const hostRef = useRef<HTMLDivElement>(null);
 
+	const hitPointRef = useRef<Vector2>({ x: 0.5, y: 0.5 });
+	const hitPowerRef = useRef(0.5);
+
+	const appRef = useRef<Application | null>(null);
+	const rendererRef = useRef<WorldRenderer | null>(null);
+	const simulatorRef = useRef<Simulator>(
+		new Simulator({
+			table: {
+				width: 2.844,
+				height: 1.422,
+			},
+			ball: {
+				count: 4,
+				radius: 0.05715 / 2,
+			},
+			physics: {
+				timeStep: 1 / 60,
+			},
+		}),
+	);
+	const previousTickRef = useRef<() => void | null>(null);
+
+	const simulate = useCallback(() => {
+		if (!appRef.current || !rendererRef.current) {
+			logger.error("App or Renderer not initialized");
+			return;
+		}
+
+		if (previousTickRef.current) {
+			appRef.current.ticker.remove(previousTickRef.current);
+		}
+
+		const app = appRef.current;
+		const renderer = rendererRef.current;
+		const simulator = simulatorRef.current;
+
+		const [initialTrajactory, step] = simulator.simulate(
+			{ x: 1.422, y: 0.711 },
+			[
+				...Array.from({ length: 3 }, (_, i) => ({
+					x: 1.422 + Math.cos((Math.PI / 3) * 2 * i) * 0.2,
+					y: 0.711 + Math.sin((Math.PI / 3) * 2 * i) * 0.2,
+				})),
+			],
+			Math.PI / 3,
+			hitPowerRef.current,
+			hitPointRef.current,
+		);
+
+		renderer.sync(initialTrajactory);
+
+		const tick = () => {
+			const trajectory = step();
+
+			renderer.sync(trajectory);
+		};
+		app.ticker.add(tick);
+		previousTickRef.current = tick;
+	}, []);
+
 	useEffect(() => {
 		const ac = new AbortController();
 
@@ -130,46 +189,8 @@ function Physics() {
 				pixiCanvas.style.aspectRatio = "2 / 1";
 				host.appendChild(pixiCanvas);
 
-				const renderer = new WorldRenderer(app.stage, SCALE);
-
-				const count = 8;
-
-				const simulator = new Simulator({
-					table: {
-						width: 2.844,
-						height: 1.422,
-					},
-					ball: {
-						count: count,
-						radius: 0.05715 / 2,
-					},
-					physics: {
-						timeStep: 1 / 60,
-					},
-				});
-
-				const [initialTrajactory, step] = simulator.simulate(
-					{ x: 1.422, y: 0.711 },
-					[
-						...Array.from({ length: count - 1 }, (_, i) => ({
-							x: 1.422 + Math.cos((Math.PI / (count - 1)) * 2 * i) * 0.2,
-							y: 0.711 + Math.sin((Math.PI / (count - 1)) * 2 * i) * 0.2,
-						})),
-					],
-					Math.PI / 1.4,
-					4,
-					{ x: 0.5, y: 0.5 },
-				);
-
-				renderer.sync(initialTrajactory);
-
-				await sleep(1000);
-
-				app.ticker.add(() => {
-					const trajectory = step();
-
-					renderer.sync(trajectory);
-				});
+				appRef.current = app;
+				rendererRef.current = new WorldRenderer(app.stage, SCALE);
 			} catch (err) {
 				logger.error(err);
 			}
@@ -183,8 +204,6 @@ function Physics() {
 
 	return (
 		<div
-			ref={hostRef}
-			className={styles.container}
 			style={{
 				width: "100vw",
 				height: "100vh",
@@ -193,7 +212,45 @@ function Physics() {
 				justifyContent: "center",
 				alignItems: "center",
 			}}
-		/>
+		>
+			<div
+				ref={hostRef}
+				style={{
+					width: "100cqw",
+					height: "auto",
+					display: "flex",
+					justifyContent: "center",
+					alignItems: "center",
+				}}
+			/>
+
+			<HitControlPanel
+				style={{
+					position: "absolute",
+					bottom: "20px",
+					left: "20px",
+				}}
+				onHitPointChange={(point) => {
+					hitPointRef.current = point;
+				}}
+				onHitPowerChange={(power) => {
+					hitPowerRef.current = power;
+				}}
+			/>
+
+			<button
+				style={{
+					position: "absolute",
+					bottom: "20px",
+					right: "20px",
+				}}
+				onClick={() => {
+					simulate();
+				}}
+			>
+				Simulate
+			</button>
+		</div>
 	);
 }
 

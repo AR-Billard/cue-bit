@@ -94,6 +94,7 @@ class Simulator {
 			RAPIER.ColliderDesc.ball(radius)
 				.setRestitution(0.95)
 				.setFriction(0.03)
+				.setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min)
 				.setDensity(1700),
 			rigidbody,
 		);
@@ -141,12 +142,6 @@ class Simulator {
 			}
 		});
 
-		// this.targetBall.rigidbody.applyImpulseAtPoint(
-		// 	new Vector3(power * Math.cos(angle), 0, power * Math.sin(angle)),
-		// 	new Vector3(point.x, this.config.ball.radius / 2, point.y),
-		// 	true,
-		// );
-		//
 		const initialTrajectory: Trajectory = {
 			target: {
 				position: this.targetBall.rigidbody.translation(),
@@ -163,8 +158,26 @@ class Simulator {
 				radius: this.config.ball.radius,
 			})),
 		};
-		this.targetBall.rigidbody.applyImpulse(
-			new Vector3(power * Math.cos(angle), 0, power * Math.sin(angle)),
+
+		const ballCenter = this.targetBall.rigidbody.translation();
+
+		// 임펄스 방향
+		const dirX = Math.cos(angle);
+		const dirZ = Math.sin(angle);
+
+		// 수평 평면상 임펄스에 수직인 방향
+		const perpX = -Math.sin(angle);
+		const perpZ = Math.cos(angle);
+
+		const contactPoint = new Vector3(
+			ballCenter.x + perpX * this.config.ball.radius * hitPoint.x,
+			ballCenter.y + this.config.ball.radius * hitPoint.y,
+			ballCenter.z + perpZ * this.config.ball.radius * hitPoint.x,
+		);
+
+		this.targetBall.rigidbody.applyImpulseAtPoint(
+			new Vector3(power * dirX, 0, power * dirZ),
+			contactPoint,
 			true,
 		);
 
