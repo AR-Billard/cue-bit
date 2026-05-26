@@ -219,6 +219,39 @@ function Main() {
 				return transformedPoints;
 			});
 
+            const transformedCue = withMatScope((track) => {
+                if (!result.cue) {
+                    return null;
+                }
+
+                const src = track(
+                    cv.matFromArray(
+                        2,
+                        1,
+                        cv.CV_32FC2,
+                        [
+                            result.cue.line.start.x,
+                            result.cue.line.start.y,
+                            result.cue.line.end.x,
+                            result.cue.line.end.y,
+                        ],
+                    ),
+                );
+                const dst = track(new cv.Mat());
+                const transform = track(restoreMat(table.matrix.transform));
+                cv.perspectiveTransform(src, dst, transform);
+                return {
+                    start: {
+                        x: dst.data32F[0],
+                        y: dst.data32F[1],
+                    },
+                    end: {
+                        x: dst.data32F[2],
+                        y: dst.data32F[3],
+                    },
+                };
+            });
+
 			normalizedTableDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 2844;
 				const heightScaleFactor = height / 1422;
@@ -249,6 +282,22 @@ function Main() {
 					context.stroke();
 					i++;
 				}
+
+                if (transformedCue) {
+                    context.strokeStyle = "white";
+                    context.lineWidth = width * 0.002;
+
+                    context.beginPath();
+                    context.moveTo(
+                        transformedCue.start.x * widthScaleFactor,
+                        transformedCue.start.y * heightScaleFactor,
+                    );
+                    context.lineTo(
+                        transformedCue.end.x * widthScaleFactor,
+                        transformedCue.end.y * heightScaleFactor,
+                    );
+                    context.stroke();
+                }
 			});
 
 			const scaledPoints = transformedPoints.map((p) => ({

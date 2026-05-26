@@ -1072,13 +1072,14 @@ class Cuebit {
 					matrix: table.matrix,
 				},
 			balls,
-			cue: postprocessResult?.cue && {
-				bbox: postprocessResult.cue.bbox,
-				line: lineForCue && {
-					start: lineForCue[0],
-					end: lineForCue[1],
+			cue: postprocessResult?.cue &&
+				lineForCue && {
+					bbox: postprocessResult.cue.bbox,
+					line: {
+						start: lineForCue[0],
+						end: lineForCue[1],
+					},
 				},
-			},
 		};
 	}
 
