@@ -117,10 +117,10 @@ function Physics() {
 			},
 			ball: {
 				count: 4,
-				radius: 0.05715 / 2,
+				radius: 0.0655 / 2,
 			},
 			physics: {
-				timeStep: 1 / 60,
+				timeStep: 1 / 120,
 			},
 		}),
 	);

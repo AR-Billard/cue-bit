@@ -22,6 +22,7 @@ type CubitObject = {
 class Simulator {
 	private config: SimulationConfig;
 	private world: RAPIER.World;
+	private eventQueue: RAPIER.EventQueue;
 	private table: CubitObject[];
 	private targetBall: CubitObject;
 	private otherBalls: CubitObject[];
@@ -29,6 +30,8 @@ class Simulator {
 	public constructor(config: SimulationConfig) {
 		this.config = config;
 		this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+		this.world.timestep = config.physics.timeStep;
+		this.eventQueue = new RAPIER.EventQueue(true);
 		this.table = [
 			// ground
 			this.createWall(
@@ -95,7 +98,8 @@ class Simulator {
 				.setRestitution(0.95)
 				.setFriction(0.03)
 				.setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min)
-				.setDensity(1700),
+				.setDensity(1700)
+				.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
 			rigidbody,
 		);
 
@@ -154,6 +158,7 @@ class Simulator {
 				linvel: this.targetBall.rigidbody.linvel(),
 				angvel: this.targetBall.rigidbody.angvel(),
 				radius: this.config.ball.radius,
+				collided: false,
 			},
 			others: this.otherBalls.map((ball) => ({
 				position: ball.rigidbody.translation(),
@@ -161,6 +166,7 @@ class Simulator {
 				linvel: ball.rigidbody.linvel(),
 				angvel: ball.rigidbody.angvel(),
 				radius: this.config.ball.radius,
+				collided: false,
 			})),
 		};
 
@@ -189,7 +195,14 @@ class Simulator {
 		return [
 			initialTrajectory,
 			() => {
-				this.world.step();
+				this.world.step(this.eventQueue);
+
+				const collidedHandles = new Set<number>();
+				this.eventQueue.drainCollisionEvents((h1, h2, started) => {
+					if (!started) return;
+					collidedHandles.add(h1);
+					collidedHandles.add(h2);
+				});
 
 				return {
 					target: {
@@ -198,6 +211,7 @@ class Simulator {
 						linvel: this.targetBall.rigidbody.linvel(),
 						angvel: this.targetBall.rigidbody.angvel(),
 						radius: this.config.ball.radius,
+						collided: collidedHandles.has(this.targetBall.collider.handle),
 					},
 					others: this.otherBalls.map((ball) => ({
 						position: ball.rigidbody.translation(),
@@ -205,6 +219,7 @@ class Simulator {
 						linvel: ball.rigidbody.linvel(),
 						angvel: ball.rigidbody.angvel(),
 						radius: this.config.ball.radius,
+						collided: collidedHandles.has(ball.collider.handle),
 					})),
 				};
 			},

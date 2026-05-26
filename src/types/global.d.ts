@@ -47,6 +47,7 @@ declare global {
 		readonly linvel: Vector3;
 		readonly angvel: Vector3;
 		readonly radius: number;
+		readonly collided: boolean;
 	};
 
 	type Trajectory = {
