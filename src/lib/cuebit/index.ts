@@ -226,7 +226,6 @@ function findTableQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
-	region: { lt: Vector2; rb: Vector2 },
 ): [Vector2, Vector2, Vector2, Vector2] | null {
 	const result = withMatScope((track) => {
 		// Float32 → 0/255 binary Mat
@@ -235,23 +234,12 @@ function findTableQuad(
 			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
 
-		const roi = track(
-			src.roi(
-				new cv.Rect(
-					region.lt.x,
-					region.lt.y,
-					region.rb.x - region.lt.x,
-					region.rb.y - region.lt.y,
-				),
-			),
-		);
-
 		// TODO: roi + 노이즈 제거 해야함
 
 		const contours = track(new cv.MatVector());
 		const hierarchy = track(new cv.Mat());
 		cv.findContours(
-			roi,
+			src,
 			contours,
 			hierarchy,
 			cv.RETR_EXTERNAL,
@@ -282,8 +270,8 @@ function findTableQuad(
 				result = [];
 				for (let i = 0; i < 4; i++) {
 					result.push({
-						x: approx.data32S[i * 2] + region.lt.x,
-						y: approx.data32S[i * 2 + 1] + region.lt.y,
+						x: approx.data32S[i * 2],
+						y: approx.data32S[i * 2 + 1],
 					});
 				}
 			} else {
@@ -292,10 +280,7 @@ function findTableQuad(
 				const rect = cv.minAreaRect(cnt);
 				const box = cv.boxPoints(rect);
 
-				result = box.map((p) => ({
-					x: p.x + region.lt.x,
-					y: p.y + region.lt.y,
-				}));
+				result = box.map((p) => ({ x: p.x, y: p.y }));
 			}
 		}
 
@@ -1001,17 +986,6 @@ class Cuebit {
 				result.table.mask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
-				// NOTE: 나중에 스케일 변환이 필요할수도 있음
-				{
-					lt: {
-						x: result.table.bbox.lt.x,
-						y: result.table.bbox.lt.y,
-					},
-					rb: {
-						x: result.table.bbox.rb.x,
-						y: result.table.bbox.rb.y,
-					},
-				},
 			);
 
 			if (result.table !== null && quad === null) {
