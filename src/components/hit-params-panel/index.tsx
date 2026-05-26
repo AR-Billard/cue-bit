@@ -34,6 +34,10 @@ function HitControlPanel(props: HitControlPanelProps) {
 
 	const onHitPointChange = useCallback<PointerEventHandler<HTMLDivElement>>(
 		(event) => {
+			if (event.buttons === 0) {
+				return;
+			}
+
 			const rect = event.currentTarget.getBoundingClientRect();
 			const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
 			const y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
@@ -62,6 +66,10 @@ function HitControlPanel(props: HitControlPanelProps) {
 	);
 	const onHitAngleChange = useCallback<PointerEventHandler<HTMLDivElement>>(
 		(event) => {
+			if (event.buttons === 0) {
+				return;
+			}
+
 			const rect = event.currentTarget.getBoundingClientRect();
 			const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
 			const y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
