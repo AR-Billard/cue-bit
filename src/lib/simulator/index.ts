@@ -23,6 +23,7 @@ class Simulator {
 	private config: SimulationConfig;
 	private world: RAPIER.World;
 	private eventQueue: RAPIER.EventQueue;
+    // @ts-expect-error - table 아직 쓸 일이 없음
 	private table: CubitObject[];
 	private targetBall: CubitObject;
 	private otherBalls: CubitObject[];
