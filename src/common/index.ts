@@ -87,14 +87,25 @@ export function restoreMat(snap: MatSnapshot): cv.Mat {
 	return mat;
 }
 
-/**
- *  값을 min-max 범위로 클램프
- * @param value
- * @param min
- * @param max
- * @returns
- */
-export function clampValue(value: number, min: number, max: number) {
-	if (!Number.isFinite(value)) return min;
-	return Math.max(min, Math.min(max, value));
+export function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function rerange(vector: Vector2, from: number, to: number): Vector2 {
+	const scale = to / from;
+	return {
+		x: vector.x * scale,
+		y: vector.y * scale,
+	};
+}
+
+export function exportMatToPNG(mat: cv.Mat, fileName = "output.png") {
+	const canvas = document.createElement("canvas");
+
+	cv.imshow(canvas, mat);
+
+	const link = document.createElement("a");
+	link.href = canvas.toDataURL("image/png");
+	link.download = fileName;
+	link.click();
 }

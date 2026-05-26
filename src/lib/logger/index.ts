@@ -1,17 +1,23 @@
 import pino from "pino";
 
 /**
- * 애플리케이션 전역 로거
+ * 앱 전역에서 사용하는 로거
+ *
  * 사용법:
  *   import logger from "@/lib/logger";
- *   logger.info("메시지");
- *   logger.error({ err }, "에러 메시지");
+ *   logger.info("카메라 시작됨");
+ *   logger.warn("공 감지 실패");
+ *   logger.error({ err }, "카메라 에러 발생");
  *
- * 레벨: trace < debug < info < warn < error < fatal
+ * 로그 레벨:
+ *   trace < debug < info < warn < error < fatal
+ *   개발 중엔 debug, 배포 시엔 info 이상만 출력
  */
 const logger = pino({
+	// 개발 환경이면 debug, 배포 환경이면 info
 	level: import.meta.env.DEV ? "debug" : "info",
 	browser: {
+		// 브라우저 환경에서 pino가 console을 사용하도록 설정
 		asObject: false,
 		serialize: false,
 		transmit: undefined,

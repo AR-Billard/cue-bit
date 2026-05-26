@@ -1,10 +1,16 @@
-import cv from "@techstark/opencv-js";
+import cv, { line } from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
-import { alignTo16, measure, snapshotMat, withMatScope } from "@/common";
+import {
+	alignTo16,
+	exportMatToPNG,
+	measure,
+	rerange,
+	snapshotMat,
+	withMatScope,
+} from "@/common";
 import hyperparams from "@/config/hyperparams";
 import type { ONNX } from "@/lib/onnx";
-import type { Point } from "@/types/physics";
 import type { FrameInfo } from "../capture";
 import hwc2chwShader from "./shaders/hwc2chw.wgsl";
 import maskShader from "./shaders/mask.wgsl";
@@ -88,30 +94,55 @@ interface BufferSet {
 	 */
 	readonly maskFrameTexture: GPUTexture;
 	/**
+	 * 테이블 마스크 이미지를 저장하는 버퍼
+	 */
+	readonly tableMaskFrameTexture: GPUTexture;
+	/**
+	 * 큐 마스크 이미지를 저장하는 버퍼
+	 */
+	readonly cueMaskFrameTexture: GPUTexture;
+	/**
 	 * 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼:
 	 */
-	readonly maskReadBuffer: GPUBuffer;
+	readonly tableMaskReadBuffer: GPUBuffer;
+	/**
+	 * 큐 마스크 이미지를 CPU에 전달하기 위한 staging 버퍼
+	 */
+	readonly cueMaskReadBuffer: GPUBuffer;
 }
 
 interface Postprocess {
-	tableMask: Float32Array | null;
-	balls: Point[];
+	table: {
+		bbox: {
+			lt: Vector2;
+			rb: Vector2;
+		};
+		mask: Float32Array | null;
+	} | null;
+	balls: Vector2[];
+	cue: {
+		bbox: {
+			lt: Vector2;
+			rb: Vector2;
+		};
+		mask: Float32Array | null;
+	} | null;
 }
 
 interface Quad {
 	readonly points: {
-		readonly topLeft: Point;
-		readonly bottomLeft: Point;
-		readonly bottomRight: Point;
-		readonly topRight: Point;
+		readonly topLeft: Vector2;
+		readonly bottomLeft: Vector2;
+		readonly bottomRight: Vector2;
+		readonly topRight: Vector2;
 	};
 }
 
-function dist(a: Point, b: Point): number {
+function dist(a: Vector2, b: Vector2): number {
 	return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function toQuad(points: [Point, Point, Point, Point]): Quad {
+function toQuad(points: [Vector2, Vector2, Vector2, Vector2]): Quad {
 	const indexedPoints = points.map((point, index) => ({
 		point,
 		index,
@@ -195,13 +226,15 @@ function findTableQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
-): [Point, Point, Point, Point] | null {
+): [Vector2, Vector2, Vector2, Vector2] | null {
 	const result = withMatScope((track) => {
 		// Float32 → 0/255 binary Mat
 		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
 		for (let i = 0; i < width * height; i++) {
 			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
+
+		// TODO: roi + 노이즈 제거 해야함
 
 		const contours = track(new cv.MatVector());
 		const hierarchy = track(new cv.Mat());
@@ -224,8 +257,7 @@ function findTableQuad(
 			}
 		}
 
-		let result: Point[] | null = null;
-        console.log(maxIdx);
+		let result: Vector2[] | null = null;
 		if (maxIdx >= 0) {
 			const cnt = contours.get(maxIdx);
 			const approx = track(new cv.Mat());
@@ -233,6 +265,8 @@ function findTableQuad(
 			cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
 
 			if (approx.rows === 4) {
+				// 4점이면 그대로 사각형으로 사용
+
 				result = [];
 				for (let i = 0; i < 4; i++) {
 					result.push({
@@ -241,8 +275,8 @@ function findTableQuad(
 					});
 				}
 			} else {
-                console.log(`Approximated contour has ${approx.rows} points, expected 4.`);
 				// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
+
 				const rect = cv.minAreaRect(cnt);
 				const box = cv.boxPoints(rect);
 
@@ -253,13 +287,64 @@ function findTableQuad(
 		return result;
 	});
 
-	return result ? [result[0], result[1], result[2], result[3]] : null;
+	return result && [result[0], result[1], result[2], result[3]];
+}
+
+function findCue(
+	mask: Float32Array,
+	width: number,
+	height: number,
+	region: { lt: Vector2; rb: Vector2 },
+): [Vector2, Vector2] | null {
+	return withMatScope((track) => {
+		// Float32 → 0/255 binary Mat
+		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
+		for (let i = 0; i < width * height; i++) {
+			src.data[i] = mask[i] > 0.5 ? 255 : 0;
+		}
+
+		const roi = track(
+			src.roi(
+				new cv.Rect(
+					region.lt.x,
+					region.lt.y,
+					region.rb.x - region.lt.x,
+					region.rb.y - region.lt.y,
+				),
+			),
+		);
+
+		const lines = track(new cv.Mat());
+		cv.HoughLinesP(roi, lines, 1, Math.PI / 180, 4, 10, 5);
+
+		let result: [Vector2, Vector2] | null = null;
+		let lineLength = 0;
+		for (let i = 0; i < lines.rows; i++) {
+			const line: [Vector2, Vector2] = [
+				{
+					x: lines.data32S[i * 4] + region.lt.x,
+					y: lines.data32S[i * 4 + 1] + region.lt.y,
+				},
+				{
+					x: lines.data32S[i * 4 + 2] + region.lt.x,
+					y: lines.data32S[i * 4 + 3] + region.lt.y,
+				},
+			];
+
+			if (dist(line[0], line[1]) > lineLength) {
+				lineLength = dist(line[0], line[1]);
+				result = line;
+			}
+		}
+
+		return result;
+	});
 }
 
 class Detection {
 	public readonly index: number;
-	public readonly lt: Point;
-	public readonly rb: Point;
+	public readonly lt: Vector2;
+	public readonly rb: Vector2;
 	public readonly confidence: number;
 	public readonly classId: number;
 	public readonly coefficients: Float32Array;
@@ -283,8 +368,11 @@ class Detection {
 function toDetections(detection: Float32Array, chunkSize: number): Detection[] {
 	const detections: Detection[] = [];
 
-	for (let i = 0; i < detection.length; i += chunkSize) {
-		detections.push(new Detection(i, detection.subarray(i, i + chunkSize)));
+	for (let i = 0; i < detection.length; i++) {
+		const offset = i * chunkSize;
+		detections.push(
+			new Detection(i, detection.subarray(offset, offset + chunkSize)),
+		);
 	}
 
 	return detections;
@@ -504,6 +592,22 @@ class Cuebit {
 				GPUTextureUsage.TEXTURE_BINDING |
 				GPUTextureUsage.STORAGE_BINDING,
 		});
+		const tableMaskFrameTexture = this.device.createTexture({
+			size: [
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+			],
+			format: "rgba8unorm",
+			usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+		});
+		const cueMaskFrameTexture = this.device.createTexture({
+			size: [
+				onnx.segementation.output.fetchs.protos.width,
+				onnx.segementation.output.fetchs.protos.height,
+			],
+			format: "rgba8unorm",
+			usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+		});
 		const maskBindgroup = this.device.createBindGroup({
 			layout: maskPipeline.getBindGroupLayout(0),
 			entries: [
@@ -537,7 +641,12 @@ class Cuebit {
 				},
 			],
 		});
-		const maskReadBuffer = this.device.createBuffer({
+		const tableMaskReadBuffer = this.device.createBuffer({
+			label: "Mask Read Buffer",
+			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+			size: maskBuffer.size,
+		});
+		const cueMaskReadBuffer = this.device.createBuffer({
 			label: "Mask Read Buffer",
 			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 			size: maskBuffer.size,
@@ -563,7 +672,10 @@ class Cuebit {
 			maskCandidateIndexBuffer,
 			maskBuffer,
 			maskFrameTexture,
-			maskReadBuffer,
+			tableMaskFrameTexture,
+			cueMaskFrameTexture,
+			tableMaskReadBuffer,
+			cueMaskReadBuffer,
 		};
 	}
 
@@ -616,13 +728,16 @@ class Cuebit {
 		pass.end();
 	}
 
-	private select(detections: Detection[]): [Detection | null, Detection[]] {
+	private select(
+		detections: Detection[],
+	): [Detection | null, Detection[], Detection | null] {
 		let table: Detection | null = null;
 		const balls: Detection[] = [];
-		const ballClassIds = new Set([0, 1, 3, 4]);
+		const ballClassIds = new Set([0, 2, 4, 5]);
+		let cue: Detection | null = null;
 
 		for (const detection of detections) {
-			if (detection.classId === 2) {
+			if (detection.classId === 3) {
 				// NOTE: 2: table
 				if (table === null || detection.confidence > table.confidence) {
 					table = detection;
@@ -632,53 +747,122 @@ class Cuebit {
 				if (detection.confidence > 0.25) {
 					balls.push(detection);
 				}
+			} else if (detection.classId === 1) {
+				if (cue === null || detection.confidence > cue.confidence) {
+					cue = detection;
+				}
 			}
 		}
 
-		return [table, balls];
+		return [table, balls, cue];
 	}
 
-	private async getMask(buffer: BufferSet, tableDetection: Detection) {
-		this.device.queue.writeBuffer(
-			buffer.maskCandidateIndexBuffer,
-			0,
-			new Uint32Array([tableDetection.index]),
-		);
+	private async getMask(
+		buffer: BufferSet,
+		tableDetection: Detection | null,
+		cueDetection: Detection | null,
+	): Promise<[Float32Array | null, Float32Array | null]> {
+		// table mask pass
+		if (tableDetection) {
+			this.device.queue.writeBuffer(
+				buffer.maskCandidateIndexBuffer,
+				0,
+				new Uint32Array([tableDetection.index]),
+			);
+			const commandEncoder = this.device.createCommandEncoder();
+			const tableMaskPass = commandEncoder.beginComputePass();
+			tableMaskPass.setPipeline(buffer.maskPipeline);
+			tableMaskPass.setBindGroup(0, buffer.maskBindgroup);
+			tableMaskPass.dispatchWorkgroups(
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
+			);
+			tableMaskPass.end();
+			commandEncoder.copyBufferToBuffer(
+				buffer.maskBuffer,
+				0,
+				buffer.tableMaskReadBuffer,
+				0,
+				// 4 byte * 후보 detection * width * height
+				4 *
+					hyperparams.maxCandidateCount *
+					this.onnx.segementation.output.fetchs.protos.width *
+					this.onnx.segementation.output.fetchs.protos.height,
+			);
+			commandEncoder.copyTextureToTexture(
+				{
+					texture: buffer.maskFrameTexture,
+				},
+				{
+					texture: buffer.tableMaskFrameTexture,
+				},
+				[
+					this.onnx.segementation.output.fetchs.protos.width,
+					this.onnx.segementation.output.fetchs.protos.height,
+				],
+			);
 
-		const commandEncoder = this.device.createCommandEncoder();
-		const maskPass = commandEncoder.beginComputePass();
-		maskPass.setPipeline(buffer.maskPipeline);
-		maskPass.setBindGroup(0, buffer.maskBindgroup);
-		maskPass.dispatchWorkgroups(
-			Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
-			Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
-		);
-		maskPass.end();
-		this.device.queue.submit([commandEncoder.finish()]);
+			this.device.queue.submit([commandEncoder.finish()]);
+		}
 
-		// TODO: maskCommandEncoder와 stagingCommandEncoder를 하나의 커맨드 인코더로 합쳐서 해도 될듯
-		const maskStagingCommandEncoder = this.device.createCommandEncoder();
-		maskStagingCommandEncoder.copyBufferToBuffer(
-			buffer.maskBuffer,
-			0,
-			buffer.maskReadBuffer,
-			0,
-			// 4 byte * 후보 detection * width * height
-			4 *
-				hyperparams.maxCandidateCount *
-				this.onnx.segementation.output.fetchs.protos.width *
-				this.onnx.segementation.output.fetchs.protos.height,
-		);
-		this.device.queue.submit([maskStagingCommandEncoder.finish()]);
+		// cue mask pass
+		if (cueDetection) {
+			this.device.queue.writeBuffer(
+				buffer.maskCandidateIndexBuffer,
+				0,
+				new Uint32Array([cueDetection.index]),
+			);
+			const commandEncoder = this.device.createCommandEncoder();
+			const cueMaskPass = commandEncoder.beginComputePass();
+			cueMaskPass.setPipeline(buffer.maskPipeline);
+			cueMaskPass.setBindGroup(0, buffer.maskBindgroup);
+			cueMaskPass.dispatchWorkgroups(
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.width / 16),
+				Math.ceil(this.onnx.segementation.output.fetchs.protos.height / 16),
+			);
+			cueMaskPass.end();
+			commandEncoder.copyBufferToBuffer(
+				buffer.maskBuffer,
+				0,
+				buffer.cueMaskReadBuffer,
+				0,
+				// 4 byte * 후보 detection * width * height
+				4 *
+					hyperparams.maxCandidateCount *
+					this.onnx.segementation.output.fetchs.protos.width *
+					this.onnx.segementation.output.fetchs.protos.height,
+			);
+			commandEncoder.copyTextureToTexture(
+				{
+					texture: buffer.maskFrameTexture,
+				},
+				{
+					texture: buffer.cueMaskFrameTexture,
+				},
+				[
+					this.onnx.segementation.output.fetchs.protos.width,
+					this.onnx.segementation.output.fetchs.protos.height,
+				],
+			);
+			this.device.queue.submit([commandEncoder.finish()]);
+		}
 
-		await buffer.maskReadBuffer.mapAsync(GPUMapMode.READ);
+		await Promise.all([
+			buffer.tableMaskReadBuffer.mapAsync(GPUMapMode.READ),
+			buffer.cueMaskReadBuffer.mapAsync(GPUMapMode.READ),
+		]);
 
-		const mask = new Float32Array(
-			buffer.maskReadBuffer.getMappedRange().slice(0),
-		);
-		buffer.maskReadBuffer.unmap();
+		const tableMask =
+			tableDetection &&
+			new Float32Array(buffer.tableMaskReadBuffer.getMappedRange().slice(0));
+		buffer.tableMaskReadBuffer.unmap();
 
-		return mask;
+		const cueMask =
+			cueDetection &&
+			new Float32Array(buffer.cueMaskReadBuffer.getMappedRange().slice(0));
+		buffer.cueMaskReadBuffer.unmap();
+
+		return [tableMask, cueMask];
 	}
 
 	private async postprocess(buffer: BufferSet): Promise<Postprocess | null> {
@@ -706,17 +890,49 @@ class Cuebit {
 		);
 		buffer.detectionsReadBuffer.unmap();
 
-		// 추론 결과에서 테이블과 공 선택
-		const [table, balls] = this.select(detections);
+		// 추론 결과에서 테이블, 공, 큐 선택
+		const [table, balls, cue] = this.select(detections);
 
-		const tableMask = table && (await this.getMask(buffer, table));
+		console.log("Detected Table: ", table);
+		console.log("Detected Cue: ", cue);
+
+		const [tableMask, cueMask] = await this.getMask(buffer, table, cue);
 
 		return {
-			tableMask,
+			table: table && {
+				bbox: {
+					lt: rerange(
+						table.lt,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+					rb: rerange(
+						table.rb,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+				},
+				mask: tableMask,
+			},
 			balls: balls.map((ball) => ({
 				x: (ball.lt.x + ball.rb.x) / 2,
 				y: (ball.lt.y + ball.rb.y) / 2,
 			})),
+			cue: cue && {
+				bbox: {
+					lt: rerange(
+						cue.lt,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+					rb: rerange(
+						cue.rb,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+				},
+				mask: cueMask,
+			},
 		};
 	}
 
@@ -756,34 +972,78 @@ class Cuebit {
 			);
 
 		const getTablePoints = (result: Postprocess) => {
-			if (!result.tableMask) {
+			if (!result.table) {
 				console.log("테이블 감지 실패");
 				return null;
 			}
 
+			if (!result.table.mask) {
+				console.log("테이블 마스크 생성 실패");
+				return null;
+			}
+
 			const quad = findTableQuad(
-				result.tableMask,
+				result.table.mask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
 			);
 
-			if (result.tableMask !== null && quad === null) {
+			if (result.table !== null && quad === null) {
 				console.log("table mask로부터 quad 찾기 실패");
 			}
 
 			return quad;
 		};
 
-		const points = measure(
+		const getCuePoints = (result: Postprocess) => {
+			if (!result.cue) {
+				console.log("큐 감지 실패");
+				return null;
+			}
+
+			if (!result.cue.mask) {
+				console.log("큐 마스크 생성 실패");
+				return null;
+			}
+
+			const cue = findCue(
+				result.cue.mask,
+				this.onnx.segementation.output.fetchs.protos.width,
+				this.onnx.segementation.output.fetchs.protos.height,
+				// NOTE: 나중에 스케일 변환이 필요할수도 있음
+				{
+					lt: {
+						x: result.cue.bbox.lt.x,
+						y: result.cue.bbox.lt.y,
+					},
+					rb: {
+						x: result.cue.bbox.rb.x,
+						y: result.cue.bbox.rb.y,
+					},
+				},
+			);
+
+			if (result.cue.mask !== null && cue === null) {
+				console.log("cue mask로부터 큐 끝점 찾기 실패");
+			}
+
+			return cue;
+		};
+
+		const pointsForTable = measure(
 			() => postprocessResult && getTablePoints(postprocessResult),
 			"Find Largest Quad",
 		);
-		const quad = points && toQuad(points);
+		const quadForTable = pointsForTable && toQuad(pointsForTable);
+		const lineForCue = measure(
+			() => postprocessResult && getCuePoints(postprocessResult),
+			"Find Cue",
+		);
 
-		const table = quad
+		const table = quadForTable
 			? {
-					quad,
-					matrix: getTransformMatrix(quad),
+					quad: quadForTable,
+					matrix: getTransformMatrix(quadForTable),
 				}
 			: null;
 
@@ -804,8 +1064,21 @@ class Cuebit {
 			})) ?? [];
 
 		return {
-			table,
+			// TODO: 리팩토링 필요
+			table: postprocessResult?.table &&
+				table && {
+					bbox: postprocessResult?.table?.bbox,
+					quad: quadForTable,
+					matrix: table.matrix,
+				},
 			balls,
+			cue: postprocessResult?.cue && {
+				bbox: postprocessResult.cue.bbox,
+				line: lineForCue && {
+					start: lineForCue[0],
+					end: lineForCue[1],
+				},
+			},
 		};
 	}
 

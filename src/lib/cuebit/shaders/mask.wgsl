@@ -48,5 +48,5 @@ fn createMask(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let maskIndex = pixelOffset;
     masks[maskIndex] = sigmoid(sum);
-    textureStore(maskTexture, vec2i(i32(x), i32(y)), vec4f(sum, 0, 0, 1.0));
+    textureStore(maskTexture, vec2i(i32(x), i32(y)), vec4f(sum, 0.0, 0.0, 1.0));
 }

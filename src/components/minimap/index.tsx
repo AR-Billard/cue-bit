@@ -1,37 +1,24 @@
-import { type Ref, useState } from "react";
-import styles from "./minimap.module.css";
+import type { Ref } from "react";
+import styles from "./index.module.css";
 
 interface MinimapProps {
-	/** 미니맵 표시 여부 */
+	/** true면 선명하게, false면 흐리게 표시 */
 	visible: boolean;
 	/** 미니맵 캔버스 ref */
 	ref?: Ref<HTMLCanvasElement>;
 }
 
 /**
- * 정규화된 공 위치를 표시하는 우측 상단 미니맵 패널
+ * 우측 상단 미니맵 패널.
+ * ref를 prop으로 직접 받아 캔버스에 전달합니다. (React 19)
  */
 function Minimap({ visible, ref }: MinimapProps) {
-	const [isEnlarged, setIsEnlarged] = useState(false);
-
-	// 기본 70x120, 확대 시 2.5배 (175x300)
-	const width = isEnlarged ? 300 : 120;
-	const height = isEnlarged ? 150 : 60;
-
 	return (
 		<div
-			className={`${styles.container} ${visible ? styles.visible : styles.dim} ${
-				isEnlarged ? styles.enlarged : ""
-			}`}
-			onClick={() => setIsEnlarged(!isEnlarged)}
+			className={`${styles.container} ${visible ? styles.visible : styles.dim}`}
 		>
-			<p className={styles.label}>{isEnlarged ? "CLOSE" : "MINIMAP"}</p>
-			<canvas
-				ref={ref}
-				width={width}
-				height={height}
-				className={styles.canvas}
-			/>
+			<p className={styles.label}>MINIMAP</p>
+			<canvas ref={ref} width={70} height={120} className={styles.canvas} />
 		</div>
 	);
 }
