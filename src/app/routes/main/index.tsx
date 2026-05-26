@@ -47,7 +47,7 @@ function Main() {
 			resizedFrameCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
 			cueMaskDebugCanvas: CanvasHandle<"webgpu">,
-			tableDebugCanvas: CanvasHandle<"2d">,
+			detectionDebugCanvas: CanvasHandle<"2d">,
 			normalizedTableDebugCanvas: CanvasHandle<"2d">,
 			trajectoryDebugCanvas: CanvasHandle<"2d">,
 		) => {
@@ -80,48 +80,69 @@ function Main() {
 				return;
 			}
 
-			tableDebugCanvas.draw((context, width, height) => {
+			detectionDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 160;
 				const heightScaleFactor = height / 160;
 
 				context.clearRect(0, 0, width, height);
 
-				context.strokeStyle = "red";
-				context.lineWidth = width * 0.005;
-				context.font = `${width * 0.05}px Arial`;
-				context.fillStyle = "red";
-				context.textAlign = "center";
-				context.textBaseline = "bottom";
+				if (table.quad) {
+					context.strokeStyle = "green";
+					context.lineWidth = width * 0.002;
 
-				context.beginPath();
+					context.beginPath();
 
-				const points = [
-					table.quad.points.topLeft,
-					table.quad.points.bottomLeft,
-					table.quad.points.bottomRight,
-					table.quad.points.topRight,
-				];
-
-				for (let i = 0; i < 4; i++) {
-					const point = points[i];
 					context.fillText(
-						`${i}`,
-						point.x * widthScaleFactor,
-						point.y * heightScaleFactor,
+						"table",
+						((table.bbox.lt.x + table.bbox.rb.x) / 2) * widthScaleFactor,
+						table.bbox.lt.y * heightScaleFactor,
 					);
-					context.moveTo(
-						point.x * widthScaleFactor,
-						point.y * heightScaleFactor,
-					);
-					const nextPoint = points[(i + 1) % 4];
-					context.lineTo(
-						nextPoint.x * widthScaleFactor,
-						nextPoint.y * heightScaleFactor,
-					);
-				}
-				context.stroke();
 
-				if (result.cue?.bbox) {
+					context.rect(
+						table.bbox.lt.x * widthScaleFactor,
+						table.bbox.lt.y * heightScaleFactor,
+						(table.bbox.rb.x - table.bbox.lt.x) * widthScaleFactor,
+						(table.bbox.rb.y - table.bbox.lt.y) * heightScaleFactor,
+					);
+					context.stroke();
+
+					context.strokeStyle = "red";
+					context.lineWidth = width * 0.005;
+					context.font = `${width * 0.05}px Arial`;
+					context.fillStyle = "red";
+					context.textAlign = "center";
+					context.textBaseline = "bottom";
+
+					context.beginPath();
+
+					const points = [
+						table.quad.points.topLeft,
+						table.quad.points.bottomLeft,
+						table.quad.points.bottomRight,
+						table.quad.points.topRight,
+					];
+
+					for (let i = 0; i < 4; i++) {
+						const point = points[i];
+						context.fillText(
+							`${i}`,
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+						);
+						context.moveTo(
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+						);
+						const nextPoint = points[(i + 1) % 4];
+						context.lineTo(
+							nextPoint.x * widthScaleFactor,
+							nextPoint.y * heightScaleFactor,
+						);
+					}
+					context.stroke();
+				}
+
+				if (result.cue) {
 					context.strokeStyle = "green";
 					context.lineWidth = width * 0.002;
 
@@ -394,7 +415,7 @@ function Main() {
 				},
 				"Cue Mask",
 			);
-			const tableDebugCanvas = await createDebug2DCanvas(
+			const detectionDebugCanvas = await createDebug2DCanvas(
 				frameCapture.frameInfo.width,
 				frameCapture.frameInfo.height,
 				{
@@ -440,7 +461,7 @@ function Main() {
 					resizedFrameCanvas,
 					tableMaskDebugCanvas,
 					cueMaskDebugCanvas,
-					tableDebugCanvas,
+					detectionDebugCanvas,
 					normalizedTableDebugCanvas,
 					trajectoryDebugCanvas,
 				);

@@ -112,7 +112,13 @@ interface BufferSet {
 }
 
 interface Postprocess {
-	tableMask: Float32Array | null;
+	table: {
+		bbox: {
+			lt: Vector2;
+			rb: Vector2;
+		};
+		mask: Float32Array | null;
+	} | null;
 	balls: Vector2[];
 	cue: {
 		bbox: {
@@ -893,7 +899,21 @@ class Cuebit {
 		const [tableMask, cueMask] = await this.getMask(buffer, table, cue);
 
 		return {
-			tableMask,
+			table: table && {
+				bbox: {
+					lt: rerange(
+						table.lt,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+					rb: rerange(
+						table.rb,
+						this.onnx.segementation.input.feeds.image.width,
+						this.onnx.segementation.output.fetchs.protos.width,
+					),
+				},
+				mask: tableMask,
+			},
 			balls: balls.map((ball) => ({
 				x: (ball.lt.x + ball.rb.x) / 2,
 				y: (ball.lt.y + ball.rb.y) / 2,
@@ -952,18 +972,23 @@ class Cuebit {
 			);
 
 		const getTablePoints = (result: Postprocess) => {
-			if (!result.tableMask) {
+			if (!result.table) {
 				console.log("테이블 감지 실패");
 				return null;
 			}
 
+			if (!result.table.mask) {
+				console.log("테이블 마스크 생성 실패");
+				return null;
+			}
+
 			const quad = findTableQuad(
-				result.tableMask,
+				result.table.mask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
 			);
 
-			if (result.tableMask !== null && quad === null) {
+			if (result.table !== null && quad === null) {
 				console.log("table mask로부터 quad 찾기 실패");
 			}
 
@@ -985,7 +1010,7 @@ class Cuebit {
 				result.cue.mask,
 				this.onnx.segementation.output.fetchs.protos.width,
 				this.onnx.segementation.output.fetchs.protos.height,
-                // NOTE: 나중에 스케일 변환이 필요할수도 있음
+				// NOTE: 나중에 스케일 변환이 필요할수도 있음
 				{
 					lt: {
 						x: result.cue.bbox.lt.x,
@@ -1005,20 +1030,20 @@ class Cuebit {
 			return cue;
 		};
 
-		const points = measure(
+		const pointsForTable = measure(
 			() => postprocessResult && getTablePoints(postprocessResult),
 			"Find Largest Quad",
 		);
-		const quad = points && toQuad(points);
-		const line = measure(
+		const quadForTable = pointsForTable && toQuad(pointsForTable);
+		const lineForCue = measure(
 			() => postprocessResult && getCuePoints(postprocessResult),
 			"Find Cue",
 		);
 
-		const table = quad
+		const table = quadForTable
 			? {
-					quad,
-					matrix: getTransformMatrix(quad),
+					quad: quadForTable,
+					matrix: getTransformMatrix(quadForTable),
 				}
 			: null;
 
@@ -1039,13 +1064,19 @@ class Cuebit {
 			})) ?? [];
 
 		return {
-			table,
+			// TODO: 리팩토링 필요
+			table: postprocessResult?.table &&
+				table && {
+					bbox: postprocessResult?.table?.bbox,
+					quad: quadForTable,
+					matrix: table.matrix,
+				},
 			balls,
 			cue: postprocessResult?.cue && {
 				bbox: postprocessResult.cue.bbox,
-				line: line && {
-					start: line[0],
-					end: line[1],
+				line: lineForCue && {
+					start: lineForCue[0],
+					end: lineForCue[1],
 				},
 			},
 		};
