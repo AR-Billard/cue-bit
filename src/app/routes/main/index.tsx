@@ -219,38 +219,59 @@ function Main() {
 				return transformedPoints;
 			});
 
-            const transformedCue = withMatScope((track) => {
-                if (!result.cue) {
-                    return null;
-                }
+			const transformedCue = withMatScope((track) => {
+				if (!result.cue) {
+					return null;
+				}
 
-                const src = track(
-                    cv.matFromArray(
-                        2,
-                        1,
-                        cv.CV_32FC2,
-                        [
-                            result.cue.line.start.x,
-                            result.cue.line.start.y,
-                            result.cue.line.end.x,
-                            result.cue.line.end.y,
-                        ],
-                    ),
-                );
-                const dst = track(new cv.Mat());
-                const transform = track(restoreMat(table.matrix.transform));
-                cv.perspectiveTransform(src, dst, transform);
-                return {
-                    start: {
-                        x: dst.data32F[0],
-                        y: dst.data32F[1],
-                    },
-                    end: {
-                        x: dst.data32F[2],
-                        y: dst.data32F[3],
-                    },
-                };
-            });
+				const src = track(
+					cv.matFromArray(2, 1, cv.CV_32FC2, [
+						result.cue.line.start.x,
+						result.cue.line.start.y,
+						result.cue.line.end.x,
+						result.cue.line.end.y,
+					]),
+				);
+				const dst = track(new cv.Mat());
+				const transform = track(restoreMat(table.matrix.transform));
+				cv.perspectiveTransform(src, dst, transform);
+				return {
+					start: {
+						x: dst.data32F[0],
+						y: dst.data32F[1],
+					},
+					end: {
+						x: dst.data32F[2],
+						y: dst.data32F[3],
+					},
+				};
+			});
+
+			const cueBall: Vector2 | null =
+				(transformedCue &&
+					transformedPoints.reduce(
+						(closest, point) => {
+							const distance1 = Math.hypot(
+								point.x - transformedCue.start.x,
+								point.y - transformedCue.start.y,
+							);
+							const distance2 = Math.hypot(
+								point.x - transformedCue.end.x,
+								point.y - transformedCue.end.y,
+							);
+							const distance = Math.min(distance1, distance2);
+							// TODO: 일단은 cue stick 양 끝점과 가장 가까운 공을 큐볼로 간주하는데, 좀 더 정교한 로직으로 개선해볼 수 있을듯
+							if (closest === null || distance < closest.distance) {
+								return { point, distance };
+							} else {
+								return closest;
+							}
+						},
+						null as { point: Vector2; distance: number } | null,
+					)?.point) ??
+				null;
+
+			console.log("Cue Ball:", cueBall);
 
 			normalizedTableDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 2844;
@@ -266,11 +287,20 @@ function Main() {
 
 				let i = 0;
 				for (const point of transformedPoints) {
-					context.fillText(
-						`${i}`,
-						point.x * widthScaleFactor,
-						point.y * heightScaleFactor,
-					);
+					if (point === cueBall) {
+						context.fillText(
+							`c`,
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+						);
+					} else {
+						context.fillText(
+							`${i}`,
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+						);
+					}
+
 					context.beginPath();
 					context.arc(
 						point.x * widthScaleFactor,
@@ -283,29 +313,27 @@ function Main() {
 					i++;
 				}
 
-                if (transformedCue) {
-                    context.strokeStyle = "white";
-                    context.lineWidth = width * 0.002;
+				if (transformedCue) {
+					context.strokeStyle = "white";
+					context.lineWidth = width * 0.002;
 
-                    context.beginPath();
-                    context.moveTo(
-                        transformedCue.start.x * widthScaleFactor,
-                        transformedCue.start.y * heightScaleFactor,
-                    );
-                    context.lineTo(
-                        transformedCue.end.x * widthScaleFactor,
-                        transformedCue.end.y * heightScaleFactor,
-                    );
-                    context.stroke();
-                }
+					context.beginPath();
+					context.moveTo(
+						transformedCue.start.x * widthScaleFactor,
+						transformedCue.start.y * heightScaleFactor,
+					);
+					context.lineTo(
+						transformedCue.end.x * widthScaleFactor,
+						transformedCue.end.y * heightScaleFactor,
+					);
+					context.stroke();
+				}
 			});
 
 			const scaledPoints = transformedPoints.map((p) => ({
 				x: p.x * 0.001,
 				y: p.y * 0.001,
 			}));
-
-			console.log("Transformed and scaled points:", scaledPoints);
 
 			// const [initialTrajectory, step] = simulator.simulate(
 			// 	{ x: 0.5, y: 0.5 },
