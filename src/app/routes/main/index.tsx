@@ -1,6 +1,6 @@
 import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { measure, restoreMat, withMatScope } from "@/common";
+import { measure, rerange, restoreMat, withMatScope } from "@/common";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
@@ -330,70 +330,69 @@ function Main() {
 				}
 			});
 
-			const scaledPoints = transformedPoints.map((p) => ({
-				x: p.x * 0.001,
-				y: p.y * 0.001,
-			}));
+			if (cueBall && transformedCue) {
+				const [initialTrajectory, step] = simulator.simulate(
+					rerange(cueBall, 2844, 2.844),
+					// TODO: 최적화 필요
+					transformedPoints
+						.filter((point) => point != cueBall)
+						.map((p) => rerange(p, 2844, 2.844)),
+					Math.atan2(
+						transformedCue.end.y - transformedCue.start.y,
+						transformedCue.end.x - transformedCue.start.x,
+					),
+					1,
+					{ x: 0.5, y: 0.5 },
+				);
 
-			// const [initialTrajectory, step] = simulator.simulate(
-			// 	{ x: 0.5, y: 0.5 },
-			// 	[],
-			// 	Math.PI / 4,
-			// 	0.0001,
-			// 	{ x: 0.5, y: 0.5 },
-			// );
-			const [initialTrajectory, step] = simulator.simulate(
-				scaledPoints[0],
-				[],
-				// scaledPoints.slice(1, 3),
-				Math.PI / 1.4,
-				0.0001,
-				{ x: 0.5, y: 0.5 },
-			);
-
-			const trajectories = [initialTrajectory];
-			for (let i = 0; i < 600; i++) {
-				const trajectory = step();
-				trajectories.push(trajectory);
-			}
-
-			// console.log("Simulated trajectories:", trajectories);
-
-			// TODO: Float32Array 로 캐시히트 최적화 해볼수 있을듯
-			trajectoryDebugCanvas.draw((context, width, height) => {
-				const widthScaleFactor = width / 2844;
-				const heightScaleFactor = height / 1422;
-				const balls = [
-					trajectories.map((t) => t.target),
-					// ...trajectories.map((t) => t.others),
-				];
-
-				context.clearRect(0, 0, width, height);
-				context.lineWidth = width * 0.003;
-
-				for (let i = 0; i < balls.length; i++) {
-					const ball = balls[i];
-					context.strokeStyle = i === 0 ? "white" : "yellow";
-
-					// context.beginPath();
-					// const initialPosition = ball[0];
-					// const x = initialPosition.x * 1000 * widthScaleFactor;
-					// const y = initialPosition.z * 1000 * heightScaleFactor;
-					// context.arc(x, y, width * 0.02, 0, 2 * Math.PI);
-					// context.stroke();
-
-					// context.beginPath();
-					// context.moveTo(x, y);
-					// for (let tick = 1; tick < ball.length; tick++) {
-					// 	const position = ball[tick];
-					// 	const x = position.x * 1000 * widthScaleFactor;
-					// 	const y = position.z * 1000 * heightScaleFactor;
-
-					// 	context.lineTo(x, y);
-					// }
-					// context.stroke();
+				const trajectories = [initialTrajectory];
+				for (let i = 0; i < 600; i++) {
+					const trajectory = step();
+					trajectories.push(trajectory);
 				}
-			});
+
+				// TODO: Float32Array 로 캐시히트 최적화 해볼수 있을듯
+				trajectoryDebugCanvas.draw((context, width, height) => {
+					const widthScaleFactor = width / 2844;
+					const heightScaleFactor = height / 1422;
+
+					context.clearRect(0, 0, width, height);
+
+					context.strokeStyle = "rgba(255, 255, 255, 0.8)";
+					context.lineWidth = 2;
+					context.beginPath();
+					context.moveTo(
+						initialTrajectory.target.position.x * 1000,
+						initialTrajectory.target.position.z * 1000,
+					);
+					for (const trajectory of trajectories) {
+						const { target } = trajectory;
+						const x = target.position.x * 1000;
+						const y = target.position.z * 1000;
+
+						context.lineTo(x, y);
+					}
+					context.stroke();
+
+					for (let i = 0; i < initialTrajectory.others.length; i++) {
+						context.strokeStyle = `rgba(0, 125, 255, 1)`;
+						context.lineWidth = 2;
+						context.beginPath();
+						context.moveTo(
+							initialTrajectory.others[i].position.x * 1000,
+							initialTrajectory.others[i].position.z * 1000,
+						);
+						for (const trajectory of trajectories) {
+							const { others } = trajectory;
+							const x = others[i].position.x * 1000;
+							const y = others[i].position.z * 1000;
+
+							context.lineTo(x, y);
+						}
+						context.stroke();
+					}
+				});
+			}
 		},
 	);
 
@@ -447,7 +446,7 @@ function Main() {
 				},
 				ball: {
 					count: 4,
-					radius: 0.05715 / 2,
+					radius: 0.0655 / 2,
 				},
 				physics: {
 					timeStep: 1 / 60,
