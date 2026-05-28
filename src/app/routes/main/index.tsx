@@ -7,6 +7,7 @@ import useDebugCanvas from "@/hooks/use-debug-canvas";
 import useGPUCanvas, { drawTexture } from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
+import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
@@ -271,8 +272,6 @@ function Main() {
 					)?.point) ??
 				null;
 
-			console.log("Cue Ball:", cueBall);
-
 			normalizedTableDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 2844;
 				const heightScaleFactor = height / 1422;
@@ -423,7 +422,9 @@ function Main() {
 				ac.signal,
 				track,
 			);
-			console.log("Frame capture created:", frameCapture);
+			logger.info(
+				`Frame capture created. width: ${frameCapture.frameInfo.width}, height: ${frameCapture.frameInfo.height}`,
+			);
 
 			const cameraCanvas = await createCameraCanvas(
 				device,
@@ -432,12 +433,12 @@ function Main() {
 			);
 
 			if (ac.signal.aborted) {
-				console.log("Initialization aborted");
+				logger.info("Initialization aborted");
 				return;
 			}
 
 			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
-			console.log("Cuebit instance created:", cuebit);
+			logger.info("Cuebit instance created");
 
 			const simulator = new Simulator({
 				table: {
@@ -452,7 +453,7 @@ function Main() {
 					timeStep: 1 / 60,
 				},
 			});
-			console.log("Simulator instance created:", simulator);
+			logger.info("Simulator instance created");
 
 			const resizedFrameCanvas = await createDebugGPUCanvas(
 				device,

@@ -1,4 +1,5 @@
 import cv from "@techstark/opencv-js";
+import logger from "@/lib/logger";
 
 export function todo<T>(message: string): NonNullable<T> {
 	throw new Error(`TODO: ${message}`);
@@ -15,14 +16,14 @@ export function measure<T>(
 
 	if (result instanceof Promise) {
 		return result.then((val) => {
-			console.log(
+			logger.debug(
 				`Execution time${tag ? ` (${tag})` : ""}: ${(performance.now() - start).toFixed(2)} ms`,
 			);
 			return val;
 		});
 	}
 
-	console.log(
+	logger.debug(
 		`Execution time${tag ? ` (${tag})` : ""}: ${(performance.now() - start).toFixed(2)} ms`,
 	);
 	return result;

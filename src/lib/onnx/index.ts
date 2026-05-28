@@ -1,5 +1,6 @@
 import * as ort from "onnxruntime-web/webgpu";
 import { todo } from "@/common";
+import logger from "@/lib/logger";
 
 /**
  * Segmentation ONNX 세션 정보
@@ -167,13 +168,23 @@ const onnx: ONNX = {
 	),
 };
 
-console.log(onnx);
+logger.info("ONNX Segmentation Session 생성");
+logger.debug(`Session details: ${JSON.stringify(onnx.segementation, null, 2)}`);
 
 // 사용중인 WebGPU 디바이스
 const device = await ort.env.webgpu.device;
 
 // 어댑터 정보 출력 (디버깅 용도)
 const adapter = await navigator.gpu.requestAdapter();
-console.log(adapter?.info);
+logger.info(
+	adapter
+		? [
+				`WebGPU Architecture: ${adapter.info.architecture}`,
+				`WebGPU Vendor: ${adapter.info.vendor}`,
+				`WebGPU Device: ${adapter.info.device}`,
+				`isFallbackAdapter: ${adapter.info.isFallbackAdapter}`,
+			].join("\n")
+		: "WebGPU Adapter를 찾을 수 없음",
+);
 
 export { device, type ONNX, type ONNXSegmentationSession as ONNXSession, onnx };

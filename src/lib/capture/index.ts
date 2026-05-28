@@ -1,4 +1,5 @@
 import { measure } from "@/common";
+import logger from "@/lib/logger";
 
 export interface FrameInfo {
 	readonly width: number;
@@ -50,8 +51,9 @@ async function createFrameCapture(
 				);
 
 				if (signal.aborted || done) {
-					console.log("Frame capture stopped.");
-					console.log("Aborted:", signal.aborted, "Done:", done);
+					logger.info("Frame capture stopped.");
+					logger.debug(`Aborted: ${signal.aborted}, Done: ${done}`);
+
 					frame?.close();
 
 					break;

@@ -1,5 +1,21 @@
 import pino from "pino";
 
+const write = (prefix: string, fn: (...args: unknown[]) => void) => {
+	return (o: object) => {
+		const {
+			level: _level,
+			time: _time,
+			msg,
+			...rest
+		} = o as Record<string, unknown>;
+		if (Object.keys(rest).length > 0) {
+			fn(prefix, msg, rest);
+		} else {
+			fn(prefix, msg);
+		}
+	};
+};
+
 /**
  * 앱 전역에서 사용하는 로거
  *
@@ -17,17 +33,14 @@ const logger = pino({
 	// 개발 환경이면 debug, 배포 환경이면 info
 	level: import.meta.env.DEV ? "debug" : "info",
 	browser: {
-		// 브라우저 환경에서 pino가 console을 사용하도록 설정
-		asObject: false,
-		serialize: false,
-		transmit: undefined,
+		asObject: true,
 		write: {
-			trace: (msg) => console.debug("[TRACE]", msg),
-			debug: (msg) => console.debug("[DEBUG]", msg),
-			info: (msg) => console.info("[INFO]", msg),
-			warn: (msg) => console.warn("[WARN]", msg),
-			error: (msg) => console.error("[ERROR]", msg),
-			fatal: (msg) => console.error("[FATAL]", msg),
+			trace: write("[TRACE]", console.debug),
+			debug: write("[DEBUG]", console.debug),
+			info: write("[INFO]", console.info),
+			warn: write("[WARN]", console.warn),
+			error: write("[ERROR]", console.error),
+			fatal: write("[FATAL]", console.error),
 		},
 	},
 });

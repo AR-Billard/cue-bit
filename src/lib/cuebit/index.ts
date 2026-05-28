@@ -12,6 +12,7 @@ import {
 import hyperparams from "@/config/hyperparams";
 import type { ONNX } from "@/lib/onnx";
 import type { FrameInfo } from "../capture";
+import logger from "@/lib/logger";
 import hwc2chwShader from "./shaders/hwc2chw.wgsl";
 import maskShader from "./shaders/mask.wgsl";
 import resizeShader from "./shaders/resize.wgsl";
@@ -893,8 +894,19 @@ class Cuebit {
 		// 추론 결과에서 테이블, 공, 큐 선택
 		const [table, balls, cue] = this.select(detections);
 
-		console.log("Detected Table: ", table);
-		console.log("Detected Cue: ", cue);
+		logger.info(
+			table
+				? `인식된 테이블 index: ${table.index}, confidence: ${table.confidence}`
+				: "테이블 인식 실패",
+		);
+		logger.info(
+			balls.length > 0 ? `공 ${balls.length}개 인식됨` : "공 인식 실패",
+		);
+		logger.info(
+			cue
+				? `인식된 큐 index: ${cue.index}, confidence: ${cue.confidence}`
+				: "큐 인식 실패",
+		);
 
 		const [tableMask, cueMask] = await this.getMask(buffer, table, cue);
 
@@ -936,6 +948,65 @@ class Cuebit {
 		};
 	}
 
+	private getTablePoints(result: Postprocess) {
+		if (!result.table) {
+			logger.info("테이블 감지 실패");
+			return null;
+		}
+
+		if (!result.table.mask) {
+			logger.info("테이블 마스크 생성 실패");
+			return null;
+		}
+
+		const quad = findTableQuad(
+			result.table.mask,
+			this.onnx.segementation.output.fetchs.protos.width,
+			this.onnx.segementation.output.fetchs.protos.height,
+		);
+
+		if (result.table !== null && quad === null) {
+			logger.info("table mask로부터 quad 찾기 실패");
+		}
+
+		return quad;
+	}
+
+	private getCuePoints(result: Postprocess) {
+		if (!result.cue) {
+			logger.info("큐 감지 실패");
+			return null;
+		}
+
+		if (!result.cue.mask) {
+			logger.info("큐 마스크 생성 실패");
+			return null;
+		}
+
+		const cue = findCue(
+			result.cue.mask,
+			this.onnx.segementation.output.fetchs.protos.width,
+			this.onnx.segementation.output.fetchs.protos.height,
+			// NOTE: 나중에 스케일 변환이 필요할수도 있음
+			{
+				lt: {
+					x: result.cue.bbox.lt.x,
+					y: result.cue.bbox.lt.y,
+				},
+				rb: {
+					x: result.cue.bbox.rb.x,
+					y: result.cue.bbox.rb.y,
+				},
+			},
+		);
+
+		if (result.cue.mask !== null && cue === null) {
+			logger.info("cue mask로부터 큐 끝점 찾기 실패");
+		}
+
+		return cue;
+	}
+
 	/**
 	 *
 	 */
@@ -953,7 +1024,7 @@ class Cuebit {
 
 		const postprocessResult = await measure(
 			() => this.postprocess(previousBuffer),
-			"Get Mask",
+			"Postprocess",
 		);
 
 		// 이전 추론이 완료된 후 현재 버퍼에 대해 추론 시작
@@ -971,73 +1042,14 @@ class Cuebit {
 				},
 			);
 
-		const getTablePoints = (result: Postprocess) => {
-			if (!result.table) {
-				console.log("테이블 감지 실패");
-				return null;
-			}
-
-			if (!result.table.mask) {
-				console.log("테이블 마스크 생성 실패");
-				return null;
-			}
-
-			const quad = findTableQuad(
-				result.table.mask,
-				this.onnx.segementation.output.fetchs.protos.width,
-				this.onnx.segementation.output.fetchs.protos.height,
-			);
-
-			if (result.table !== null && quad === null) {
-				console.log("table mask로부터 quad 찾기 실패");
-			}
-
-			return quad;
-		};
-
-		const getCuePoints = (result: Postprocess) => {
-			if (!result.cue) {
-				console.log("큐 감지 실패");
-				return null;
-			}
-
-			if (!result.cue.mask) {
-				console.log("큐 마스크 생성 실패");
-				return null;
-			}
-
-			const cue = findCue(
-				result.cue.mask,
-				this.onnx.segementation.output.fetchs.protos.width,
-				this.onnx.segementation.output.fetchs.protos.height,
-				// NOTE: 나중에 스케일 변환이 필요할수도 있음
-				{
-					lt: {
-						x: result.cue.bbox.lt.x,
-						y: result.cue.bbox.lt.y,
-					},
-					rb: {
-						x: result.cue.bbox.rb.x,
-						y: result.cue.bbox.rb.y,
-					},
-				},
-			);
-
-			if (result.cue.mask !== null && cue === null) {
-				console.log("cue mask로부터 큐 끝점 찾기 실패");
-			}
-
-			return cue;
-		};
-
 		const pointsForTable = measure(
-			() => postprocessResult && getTablePoints(postprocessResult),
-			"Find Largest Quad",
+			() => postprocessResult && this.getTablePoints(postprocessResult),
+			"테이블처럼 보이는 점 찾기",
 		);
 		const quadForTable = pointsForTable && toQuad(pointsForTable);
-		const lineForCue = measure(
-			() => postprocessResult && getCuePoints(postprocessResult),
-			"Find Cue",
+		const pointsForCue = measure(
+			() => postprocessResult && this.getCuePoints(postprocessResult),
+			"큐처럼 보이는 점 찾기",
 		);
 
 		const table = quadForTable
@@ -1073,11 +1085,11 @@ class Cuebit {
 				},
 			balls,
 			cue: postprocessResult?.cue &&
-				lineForCue && {
+				pointsForCue && {
 					bbox: postprocessResult.cue.bbox,
 					line: {
-						start: lineForCue[0],
-						end: lineForCue[1],
+						start: pointsForCue[0],
+						end: pointsForCue[1],
 					},
 				},
 		};
