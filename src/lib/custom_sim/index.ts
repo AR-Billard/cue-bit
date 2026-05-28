@@ -7,86 +7,25 @@ import {
 	normalize,
 	scale,
 	sub,
-	type Vec2,
 } from "./core";
+import type {
+	BallAdvanceResult,
+	BallState,
+	CushionSide,
+	CustomBallSnapshot,
+	CustomTrajectory,
+	SimulationConfig,
+	SimulationEvent,
+	SimulationTuning,
+	Vec2,
+} from "./types";
 
-type SimulationConfig = {
-	table: {
-		width: number;
-		height: number;
-	};
-	ball: {
-		count: number;
-		radius: number;
-	};
-	physics: {
-		timeStep: number;
-	};
-};
-
-type SimulationTuning = {
-	impulseScale: number;
-	rollingFriction: number;
-	spinFriction: number;
-	ballRestitution: number;
-	cushionRestitution: number;
-	cushionSpinTransfer: number;
-	cushionFollowDrawTransfer: number;
-	ballSpinTransfer: number;
-	followDrawTransfer: number;
-	followDrawMotionTransfer: number;
-	cutThrowTransfer: number;
-	maxSpinCorrectionSpeed: number;
-	maxCushionSpinCorrectionRatio: number;
-	maxCushionFollowDrawCorrectionRatio: number;
-	cushionSpinRetention: number;
-	ballSpinRetention: number;
-	maxSpinRatio: number;
-	sideSpinStrength: number;
-	topSpinStrength: number;
-	stopSpeed: number;
-	spinStopSpeed: number;
-};
-
-type BallState = {
-	id: string;
-	position: Vec2;
-	velocity: Vec2;
-	sideSpin: number;
-	topSpin: number;
-	collided: boolean;
-};
-
-type BallSnapshot = {
-	readonly id: string;
-	readonly position: Vec2;
-	readonly velocity: Vec2;
-	readonly sideSpin: number;
-	readonly topSpin: number;
-	readonly radius: number;
-	readonly collided: boolean;
-};
-
-type Trajectory = {
-	readonly target: BallSnapshot;
-	readonly others: BallSnapshot[];
-};
-
-type CushionSide = "top" | "bottom" | "left" | "right";
-
-type SimulationEvent = {
-	type: "ball-collision" | "cushion-hit";
-	step: number;
-	position: Vec2;
-	ballId: string;
-	otherBallId?: string;
-	cushionSide?: CushionSide;
-};
-
-type BallAdvanceResult = {
-	usedTime: number;
-	collided: boolean;
-};
+export type {
+	CustomBallSnapshot,
+	CustomTrajectory,
+	SimulationConfig,
+	Vec2,
+} from "./types";
 
 const DEFAULT_TUNING: SimulationTuning = {
 	impulseScale: 1.2,
@@ -133,7 +72,7 @@ class CustomPhysicsSimulator {
 		angle: number,
 		power: number,
 		hitPoint: Vec2,
-	): [Trajectory, () => Trajectory] {
+	): [CustomTrajectory, () => CustomTrajectory] {
 		if (otherBallPositions.length > this.config.ball.count - 1) {
 			throw new Error("Too many balls");
 		}
@@ -971,7 +910,7 @@ class CustomPhysicsSimulator {
 		}
 	}
 
-	private createTrajectory(balls: BallState[]): Trajectory {
+	private createTrajectory(balls: BallState[]): CustomTrajectory {
 		const [target, ...others] = balls;
 
 		return {
@@ -980,7 +919,7 @@ class CustomPhysicsSimulator {
 		};
 	}
 
-	private createSnapshot(ball: BallState): BallSnapshot {
+	private createSnapshot(ball: BallState): CustomBallSnapshot {
 		return {
 			id: ball.id,
 			position: { ...ball.position },
