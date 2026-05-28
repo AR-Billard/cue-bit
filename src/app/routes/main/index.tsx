@@ -249,6 +249,7 @@ function Main() {
 				[],
 				// scaledPoints.slice(1, 3),
 				Math.PI / 1.4,
+				// custom_sim 사용 시 1~3으로 단위 조절해야함
 				0.0001,
 				{ x: 0.5, y: 0.5 },
 			);
@@ -276,6 +277,8 @@ function Main() {
 				for (let i = 0; i < balls.length; i++) {
 					const ball = balls[i];
 					context.strokeStyle = i === 0 ? "white" : "yellow";
+
+					//custom_sim 사용 시 z를 y로 바꿔야함
 
 					// context.beginPath();
 					// const initialPosition = ball[0];
