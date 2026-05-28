@@ -41,6 +41,12 @@ function chii(host: string, port: number): Plugin {
 
 export default defineConfig((config) => {
 	const env = loadEnv(config.mode, process.cwd(), "");
+	const chiiHost = env["VITE_CHII_HOST"];
+	const chiiPort = Number(env["VITE_CHII_PORT"]);
+	const chiiPlugins =
+		chiiHost && Number.isInteger(chiiPort) && chiiPort >= 0 && chiiPort < 65536
+			? [chii(chiiHost, chiiPort)]
+			: [];
 
 	return {
 		base: env["VITE_BASE_PATH"] ?? "/",
@@ -51,7 +57,7 @@ export default defineConfig((config) => {
 			// tsconfig paths 적용 플러그인
 			tsconfigPaths(),
 			// 원격 디버깅 플러그인
-			chii(env["VITE_CHII_HOST"], Number(env["VITE_CHII_PORT"])),
+			...chiiPlugins,
 			// wgsl을 string으로 로드하는 플러그인
 			// REVIEW: 지금은 없어도됨
 			// 원하는건 .wgsl 파일도 ts에서 존재여부를 확인해줬으면 함

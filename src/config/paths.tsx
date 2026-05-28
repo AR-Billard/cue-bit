@@ -5,4 +5,7 @@ export const paths = {
 	physics: {
 		path: "/physics",
 	},
+	customPhysics: {
+		path: "/custom_physics",
+	},
 } as const;

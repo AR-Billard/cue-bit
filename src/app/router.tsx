@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { paths } from "@/config/paths";
+import CustomPhysics from "./routes/custom_physics";
 import Main from "./routes/main";
 import Physics from "./routes/physics";
 
@@ -11,6 +12,10 @@ function AppRouter() {
 
 				<Route path={paths.main.path} element={<Main />} />
 				<Route path={paths.physics.path} element={<Physics />} />
+				<Route
+					path={paths.customPhysics.path}
+					element={<CustomPhysics />}
+				/>
 			</Routes>
 		</BrowserRouter>
 	);
