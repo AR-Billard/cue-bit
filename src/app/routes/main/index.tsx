@@ -9,6 +9,7 @@ import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
+import { drawTrajectory } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
 
@@ -334,7 +335,7 @@ function Main() {
 					rerange(cueBall, 2844, 2.844),
 					// TODO: 최적화 필요
 					transformedPoints
-						.filter((point) => point != cueBall)
+						.filter((point) => point !== cueBall)
 						.map((p) => rerange(p, 2844, 2.844)),
 					Math.atan2(
 						transformedCue.end.y - transformedCue.start.y,
@@ -351,46 +352,7 @@ function Main() {
 				}
 
 				// TODO: Float32Array 로 캐시히트 최적화 해볼수 있을듯
-				trajectoryDebugCanvas.draw((context, width, height) => {
-					const widthScaleFactor = width / 2844;
-					const heightScaleFactor = height / 1422;
-
-					context.clearRect(0, 0, width, height);
-
-					context.strokeStyle = "rgba(255, 255, 255, 0.8)";
-					context.lineWidth = 2;
-					context.beginPath();
-					context.moveTo(
-						initialTrajectory.target.position.x * 1000,
-						initialTrajectory.target.position.z * 1000,
-					);
-					for (const trajectory of trajectories) {
-						const { target } = trajectory;
-						const x = target.position.x * 1000;
-						const y = target.position.z * 1000;
-
-						context.lineTo(x, y);
-					}
-					context.stroke();
-
-					for (let i = 0; i < initialTrajectory.others.length; i++) {
-						context.strokeStyle = `rgba(0, 125, 255, 1)`;
-						context.lineWidth = 2;
-						context.beginPath();
-						context.moveTo(
-							initialTrajectory.others[i].position.x * 1000,
-							initialTrajectory.others[i].position.z * 1000,
-						);
-						for (const trajectory of trajectories) {
-							const { others } = trajectory;
-							const x = others[i].position.x * 1000;
-							const y = others[i].position.z * 1000;
-
-							context.lineTo(x, y);
-						}
-						context.stroke();
-					}
-				});
+				drawTrajectory(trajectoryDebugCanvas, trajectories);
 			}
 		},
 	);
@@ -574,7 +536,7 @@ function Main() {
 				}}
 			>
 				{cameraCanvasSpec === null ? (
-					<></>
+					<span>canvas 로딩중</span>
 				) : (
 					<canvas
 						ref={(element) => {
@@ -621,6 +583,7 @@ function Main() {
 
 				{debugCanvasSpecs.map((spec) => (
 					<div
+						key={spec.id}
 						style={{
 							width: "100cqw",
 							height: "100cqh",
@@ -632,7 +595,6 @@ function Main() {
 						}}
 					>
 						<canvas
-							key={spec.id}
 							ref={(element) => {
 								if (element) {
 									spec.onMount(element);

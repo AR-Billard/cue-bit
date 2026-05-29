@@ -21,6 +21,12 @@ declare global {
 		height: number,
 	) => void;
 
+	type CanvasSpec = {
+		width: number;
+		height: number;
+		onMount: (canvas: HTMLCanvasElement) => void;
+	};
+
 	type CanvasHandle<T extends keyof ContextMap> = {
 		canvas: HTMLCanvasElement;
 		draw: (pass: T extends "2d" ? Pass2D : PassWebGPU) => void;

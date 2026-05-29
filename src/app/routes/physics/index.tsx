@@ -1,7 +1,9 @@
 import { Application, Color, Container, Graphics } from "pixi.js";
 import { useCallback, useEffect, useRef } from "react";
 import HitControlPanel from "@/components/hit-params-panel";
+import usePlanarCanvas from "@/hooks/use-planar-canvas";
 import logger from "@/lib/logger";
+import { drawTrajectory } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 
 const SCALE = 1000;
@@ -79,7 +81,9 @@ class WorldRenderer {
 	public sync(trajectory: Trajectory) {
 		const snapshots: BallSnapshot[] = [trajectory.target, ...trajectory.others];
 
-		this.container.removeChildren().forEach((child) => child.destroy());
+		this.container.removeChildren().forEach((child) => {
+			child.destroy();
+		});
 
 		snapshots.forEach((ball, index) => {
 			const gfx = this.createColliderGfx(
@@ -101,7 +105,8 @@ class WorldRenderer {
  */
 function Physics() {
 	const hostRef = useRef<HTMLDivElement>(null);
-	const contextRef = useRef<CanvasRenderingContext2D>(null);
+	const [createCanvas, canvasSpec] = usePlanarCanvas();
+	const canvasHandleRef = useRef<CanvasHandle<"2d"> | null>(null);
 
 	const hitPointRef = useRef<Vector2>({ x: 0.5, y: 0.5 });
 	const hitPowerRef = useRef(0.5);
@@ -177,6 +182,10 @@ function Physics() {
 
 		(async () => {
 			try {
+				canvasHandleRef.current = await createCanvas(
+					CANVAS_WIDTH,
+					CANVAS_HEIGHT,
+				);
 				await app.init({
 					width: CANVAS_WIDTH,
 					height: CANVAS_HEIGHT,
@@ -206,14 +215,14 @@ function Physics() {
 			ac.abort();
 			// app.destroy(true, { children: true });
 		};
-	}, []);
+	}, [createCanvas]);
 
 	const refreshCanvas = useCallback(() => {
-		if (!contextRef.current) {
+		if (!canvasHandleRef.current) {
 			return;
 		}
+		const canvasHandle = canvasHandleRef.current;
 
-		const context = contextRef.current;
 		const simulator = simulatorRef.current;
 
 		const [initialTrajactory, step] = simulator.simulate(
@@ -235,41 +244,7 @@ function Physics() {
 			trajectries.push(trajactory);
 		}
 
-		context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-		context.strokeStyle = "rgba(255, 255, 255, 0.8)";
-		context.lineWidth = 2;
-		context.beginPath();
-		context.moveTo(
-			initialTrajactory.target.position.x * SCALE,
-			initialTrajactory.target.position.z * SCALE,
-		);
-		for (const trajectory of trajectries) {
-			const { target } = trajectory;
-			const x = target.position.x * SCALE;
-			const y = target.position.z * SCALE;
-
-			context.lineTo(x, y);
-		}
-		context.stroke();
-
-		for (let i = 0; i < initialTrajactory.others.length; i++) {
-			context.strokeStyle = `rgba(0, 125, 255, 1)`;
-			context.lineWidth = 2;
-			context.beginPath();
-			context.moveTo(
-				initialTrajactory.others[i].position.x * SCALE,
-				initialTrajactory.others[i].position.z * SCALE,
-			);
-			for (const trajectory of trajectries) {
-				const { others } = trajectory;
-				const x = others[i].position.x * SCALE;
-				const y = others[i].position.z * SCALE;
-
-				context.lineTo(x, y);
-			}
-			context.stroke();
-		}
+		drawTrajectory(canvasHandle, trajectries);
 	}, []);
 
 	return (
@@ -300,23 +275,25 @@ function Physics() {
 						alignItems: "center",
 					}}
 				/>
-				<canvas
-					ref={(canvas) => {
-						if (canvas) {
-							contextRef.current = canvas.getContext("2d");
-						}
-					}}
-					width={CANVAS_WIDTH}
-					height={CANVAS_HEIGHT}
-					style={{
-						width: "100cqw",
-						height: "auto",
-						aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
-						position: "absolute",
-						top: 0,
-						left: 0,
-					}}
-				/>
+				{canvasSpec && (
+					<canvas
+						ref={(element) => {
+							if (element) {
+								canvasSpec.onMount(element);
+							}
+						}}
+						width={canvasSpec.width}
+						height={canvasSpec.height}
+						style={{
+							width: "100cqw",
+							height: "auto",
+							aspectRatio: `${canvasSpec.width} / ${canvasSpec.height}`,
+							position: "absolute",
+							top: 0,
+							left: 0,
+						}}
+					/>
+				)}
 			</div>
 
 			<HitControlPanel
@@ -352,6 +329,7 @@ function Physics() {
 				onClick={() => {
 					simulate();
 				}}
+				type="button"
 			>
 				Simulate
 			</button>

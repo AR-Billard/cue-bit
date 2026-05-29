@@ -43,7 +43,7 @@ function useDebugCanvas() {
 				]);
 			});
 		},
-		[setSpecs],
+		[],
 	);
 
 	const createGPUCanvas = useCallback(
@@ -83,12 +83,12 @@ function useDebugCanvas() {
 				]);
 			});
 		},
-		[setSpecs],
+		[],
 	);
 
 	const clear = useCallback(() => {
 		setSpecs([]);
-	}, [setSpecs]);
+	}, []);
 
 	return [create2DCanvas, createGPUCanvas, specs, clear] as const;
 }

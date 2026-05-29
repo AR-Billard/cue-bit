@@ -1,12 +1,6 @@
 import { useCallback, useState } from "react";
 import { todo } from "@/common";
 
-type CanvasSpec = {
-	width: number;
-	height: number;
-	onMount: (canvas: HTMLCanvasElement) => void;
-};
-
 export function drawTexture(
 	device: GPUDevice,
 	context: GPUCanvasContext,
@@ -58,7 +52,7 @@ function useGPUCanvas() {
 				});
 			});
 		},
-		[setSpec],
+		[],
 	);
 
 	return [createCanvas, spec] as const;
