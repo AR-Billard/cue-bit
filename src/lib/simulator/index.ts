@@ -11,6 +11,9 @@ type SimulationConfig = {
 	};
 	physics: {
 		timeStep: number;
+		slidingFriction: number;
+		rollingFriction: number;
+		spinningFriction: number;
 	};
 };
 
@@ -23,12 +26,29 @@ class Simulator {
 	private config: SimulationConfig;
 	private world: RAPIER.World;
 	private eventQueue: RAPIER.EventQueue;
-    // @ts-expect-error - table 아직 쓸 일이 없음
+	// @ts-expect-error - table 아직 쓸 일이 없음
 	private table: CubitObject[];
 	private targetBall: CubitObject;
 	private otherBalls: CubitObject[];
 
-	public constructor(config: SimulationConfig) {
+	public constructor(
+		config: SimulationConfig = {
+			table: {
+				width: 2.844,
+				height: 1.422,
+			},
+			ball: {
+				count: 4,
+				radius: 0.0655 / 2,
+			},
+			physics: {
+				timeStep: 1 / 120,
+				slidingFriction: 0.2,
+				rollingFriction: 0.01,
+				spinningFriction: 0.04,
+			},
+		},
+	) {
 		this.config = config;
 		this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 		this.world.timestep = config.physics.timeStep;

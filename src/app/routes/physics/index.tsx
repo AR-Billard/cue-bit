@@ -108,26 +108,14 @@ function Physics() {
 	const [createCanvas, canvasSpec] = usePlanarCanvas();
 	const canvasHandleRef = useRef<CanvasHandle<"2d"> | null>(null);
 
-	const hitPointRef = useRef<Vector2>({ x: 0.5, y: 0.5 });
+	const hitPointRef = useRef<Vector2>({ x: 0, y: 0 });
 	const hitPowerRef = useRef(0.5);
 	const hitAngleRef = useRef(0);
 
 	const appRef = useRef<Application>(null);
 	const rendererRef = useRef<WorldRenderer>(null);
 	const simulatorRef = useRef<Simulator>(
-		new Simulator({
-			table: {
-				width: 2.844,
-				height: 1.422,
-			},
-			ball: {
-				count: 4,
-				radius: 0.0655 / 2,
-			},
-			physics: {
-				timeStep: 1 / 120,
-			},
-		}),
+		new Simulator(),
 	);
 	const previousTickRef = useRef<() => void>(null);
 

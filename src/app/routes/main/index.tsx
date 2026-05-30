@@ -402,19 +402,7 @@ function Main() {
 			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
 			logger.info("Cuebit instance created");
 
-			const simulator = new Simulator({
-				table: {
-					width: 2.844,
-					height: 1.422,
-				},
-				ball: {
-					count: 4,
-					radius: 0.0655 / 2,
-				},
-				physics: {
-					timeStep: 1 / 60,
-				},
-			});
+			const simulator = new Simulator();
 			logger.info("Simulator instance created");
 
 			const resizedFrameCanvas = await createDebugGPUCanvas(
