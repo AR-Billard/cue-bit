@@ -29,8 +29,8 @@ class Simulator {
 	private eventQueue: RAPIER.EventQueue;
 	// @ts-expect-error - table 아직 쓸 일이 없음
 	private table: CubitObject[];
-	private targetBall: CubitObject;
-	private otherBalls: CubitObject[];
+	private cueBall: CubitObject;
+	private objectBalls: CubitObject[];
 
 	public constructor(
 		config: SimulationConfig = {
@@ -81,8 +81,8 @@ class Simulator {
 				new RAPIER.Vector3(config.table.width / 2, 5, 1),
 			),
 		];
-		this.targetBall = this.createBall(config.ball.radius);
-		this.otherBalls = Array.from({ length: config.ball.count - 1 }, () =>
+		this.cueBall = this.createBall(config.ball.radius);
+		this.objectBalls = Array.from({ length: config.ball.count - 1 }, () =>
 			this.createBall(config.ball.radius),
 		);
 	}
@@ -170,35 +170,32 @@ class Simulator {
 	}
 
 	public simulate(
-		targetBallPosition: Vector2,
-		otherBallPositions: Vector2[],
+		cueBallPosition: Vector2,
+		objectBallPositions: Vector2[],
 		angle: number,
 		power: number,
 		hitPoint: Vector2,
 	): [Trajectory, () => Trajectory] {
-		if (otherBallPositions.length > this.otherBalls.length) {
+		if (objectBallPositions.length > this.objectBalls.length) {
 			throw new Error("Too many balls");
 		}
 
-		this.targetBall.rigidbody.setTranslation(
+		this.cueBall.rigidbody.setTranslation(
 			new Vector3(
-				targetBallPosition.x,
+				cueBallPosition.x,
 				this.config.ball.radius,
-				targetBallPosition.y,
+				cueBallPosition.y,
 			),
 			true,
 		);
-		this.targetBall.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
-		this.targetBall.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
-		this.targetBall.rigidbody.setRotation(
-			new RAPIER.Quaternion(0, 0, 0, 1),
-			true,
-		);
-		this.targetBall.rigidbody.resetForces(true);
-		this.targetBall.rigidbody.resetTorques(true);
-		this.otherBalls.forEach((ball, i) => {
-			if (i < otherBallPositions.length) {
-				const position = otherBallPositions[i];
+		this.cueBall.rigidbody.setLinvel(new Vector3(0, 0, 0), true);
+		this.cueBall.rigidbody.setAngvel(new Vector3(0, 0, 0), true);
+		this.cueBall.rigidbody.setRotation(new RAPIER.Quaternion(0, 0, 0, 1), true);
+		this.cueBall.rigidbody.resetForces(true);
+		this.cueBall.rigidbody.resetTorques(true);
+		this.objectBalls.forEach((ball, i) => {
+			if (i < objectBallPositions.length) {
+				const position = objectBallPositions[i];
 				ball.rigidbody.setTranslation(
 					new Vector3(position.x, this.config.ball.radius, position.y),
 					true,
@@ -215,15 +212,15 @@ class Simulator {
 		});
 
 		const initialTrajectory: Trajectory = {
-			target: {
-				position: this.targetBall.rigidbody.translation(),
-				rotation: this.targetBall.rigidbody.rotation(),
-				linvel: this.targetBall.rigidbody.linvel(),
-				angvel: this.targetBall.rigidbody.angvel(),
+			cueBall: {
+				position: this.cueBall.rigidbody.translation(),
+				rotation: this.cueBall.rigidbody.rotation(),
+				linvel: this.cueBall.rigidbody.linvel(),
+				angvel: this.cueBall.rigidbody.angvel(),
 				radius: this.config.ball.radius,
 				collided: false,
 			},
-			others: this.otherBalls.map((ball) => ({
+			objectBalls: this.objectBalls.map((ball) => ({
 				position: ball.rigidbody.translation(),
 				rotation: ball.rigidbody.rotation(),
 				linvel: ball.rigidbody.linvel(),
@@ -233,7 +230,7 @@ class Simulator {
 			})),
 		};
 
-		const ballCenter = this.targetBall.rigidbody.translation();
+		const ballCenter = this.cueBall.rigidbody.translation();
 
 		// 임펄스 방향
 		const dirX = Math.cos(angle);
@@ -252,7 +249,7 @@ class Simulator {
 		logger.info(
 			`hitPoint: (${hitPoint.x.toFixed(2)}, ${hitPoint.y.toFixed(2)}), contactPoint: (${contactPoint.x.toFixed(2)}, ${contactPoint.y.toFixed(2)}, ${contactPoint.z.toFixed(2)})`,
 		);
-		this.targetBall.rigidbody.applyImpulseAtPoint(
+		this.cueBall.rigidbody.applyImpulseAtPoint(
 			new Vector3(power * dirX, 0, power * dirZ),
 			contactPoint,
 			true,
@@ -261,8 +258,8 @@ class Simulator {
 		return [
 			initialTrajectory,
 			() => {
-				this.applyRollingResistance(this.targetBall);
-				this.otherBalls.forEach(this.applyRollingResistance.bind(this));
+				this.applyRollingResistance(this.cueBall);
+				this.objectBalls.forEach(this.applyRollingResistance.bind(this));
 				this.world.step(this.eventQueue);
 
 				const collidedHandles = new Set<number>();
@@ -273,15 +270,15 @@ class Simulator {
 				});
 
 				return {
-					target: {
-						position: this.targetBall.rigidbody.translation(),
-						rotation: this.targetBall.rigidbody.rotation(),
-						linvel: this.targetBall.rigidbody.linvel(),
-						angvel: this.targetBall.rigidbody.angvel(),
+					cueBall: {
+						position: this.cueBall.rigidbody.translation(),
+						rotation: this.cueBall.rigidbody.rotation(),
+						linvel: this.cueBall.rigidbody.linvel(),
+						angvel: this.cueBall.rigidbody.angvel(),
 						radius: this.config.ball.radius,
-						collided: collidedHandles.has(this.targetBall.collider.handle),
+						collided: collidedHandles.has(this.cueBall.collider.handle),
 					},
-					others: this.otherBalls.map((ball) => ({
+					objectBalls: this.objectBalls.map((ball) => ({
 						position: ball.rigidbody.translation(),
 						rotation: ball.rigidbody.rotation(),
 						linvel: ball.rigidbody.linvel(),

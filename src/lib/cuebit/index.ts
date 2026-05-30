@@ -1,18 +1,17 @@
-import cv, { line } from "@techstark/opencv-js";
+import cv from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
 import {
 	alignTo16,
-	exportMatToPNG,
 	measure,
 	rerange,
 	snapshotMat,
 	withMatScope,
 } from "@/common";
 import hyperparams from "@/config/hyperparams";
+import logger from "@/lib/logger";
 import type { ONNX } from "@/lib/onnx";
 import type { FrameInfo } from "../capture";
-import logger from "@/lib/logger";
 import hwc2chwShader from "./shaders/hwc2chw.wgsl";
 import maskShader from "./shaders/mask.wgsl";
 import resizeShader from "./shaders/resize.wgsl";

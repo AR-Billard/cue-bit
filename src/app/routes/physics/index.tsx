@@ -79,7 +79,7 @@ class WorldRenderer {
 	}
 
 	public sync(trajectory: Trajectory) {
-		const snapshots: BallSnapshot[] = [trajectory.target, ...trajectory.others];
+		const snapshots: BallSnapshot[] = [trajectory.cueBall, ...trajectory.objectBalls];
 
 		this.container.removeChildren().forEach((child) => {
 			child.destroy();

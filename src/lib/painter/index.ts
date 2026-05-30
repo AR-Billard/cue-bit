@@ -18,11 +18,11 @@ export function drawTrajectory(
 		context.lineWidth = 2;
 		context.beginPath();
 		context.moveTo(
-			initialTrajactory.target.position.x * scale,
-			initialTrajactory.target.position.z * scale,
+			initialTrajactory.cueBall.position.x * scale,
+			initialTrajactory.cueBall.position.z * scale,
 		);
 		for (const trajectory of trajectories) {
-			const { target } = trajectory;
+			const { cueBall: target } = trajectory;
 			const x = target.position.x * scale;
 			const y = target.position.z * scale;
 
@@ -30,18 +30,18 @@ export function drawTrajectory(
 		}
 		context.stroke();
 
-		for (let i = 0; i < initialTrajactory.others.length; i++) {
+		for (let i = 0; i < initialTrajactory.objectBalls.length; i++) {
 			context.strokeStyle = `rgba(0, 125, 255, 1)`;
 			context.lineWidth = 2;
 			context.beginPath();
 			context.moveTo(
-				initialTrajactory.others[i].position.x * scale,
-				initialTrajactory.others[i].position.z * scale,
+				initialTrajactory.objectBalls[i].position.x * scale,
+				initialTrajactory.objectBalls[i].position.z * scale,
 			);
 			for (const trajectory of trajectories) {
-				const { others } = trajectory;
-				const x = others[i].position.x * scale;
-				const y = others[i].position.z * scale;
+				const { objectBalls } = trajectory;
+				const x = objectBalls[i].position.x * scale;
+				const y = objectBalls[i].position.z * scale;
 
 				context.lineTo(x, y);
 			}
