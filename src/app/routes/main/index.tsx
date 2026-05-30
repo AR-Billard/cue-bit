@@ -1,6 +1,7 @@
 import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { argmin, measure, rerange, restoreMat, withMatScope } from "@/common";
+import HitControlPanel from "@/components/hit-params-panel";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
@@ -90,6 +91,9 @@ function Main() {
 	 * 미니맵 캔버스
 	 */
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+
+	const hitPointRef = useRef<Vector2>({ x: 0, y: 0 });
+	const hitPowerRef = useRef(0.5);
 
 	/**
 	 * overlay 활성화 여부
@@ -379,11 +383,8 @@ function Main() {
 					rerange(resolvedState.cueBall, 2844, 2.844),
 					resolvedState.objectBalls.map((p) => rerange(p, 2844, 2.844)),
 					resolvedState.cue.angle,
-					1,
-					{
-						x: 0,
-						y: 0,
-					},
+					hitPowerRef.current,
+					hitPointRef.current,
 				);
 
 				const trajectories = [initialTrajectory];
@@ -675,6 +676,24 @@ function Main() {
 
 			{/* 미니맵 */}
 			<Minimap ref={minimapCanvasRef} visible={isOverlayEnabled} />
+
+			<HitControlPanel
+				style={{
+					position: "absolute",
+					bottom: "20px",
+					left: "20px",
+					backgroundColor: "rgba(255, 255, 255, 0.9)",
+					padding: "12px",
+					borderRadius: "8px",
+					boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+				}}
+				onHitPointChange={(point) => {
+					hitPointRef.current = point;
+				}}
+				onHitPowerChange={(power) => {
+					hitPowerRef.current = power;
+				}}
+			/>
 
 			{/* 하단 컨트롤 패널 */}
 			<div className={styles.controls}>
