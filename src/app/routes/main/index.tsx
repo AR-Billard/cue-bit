@@ -5,12 +5,12 @@ import HitControlPanel from "@/components/hit-params-panel";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
-import useGPUCanvas, { drawTexture } from "@/hooks/use-gpu-canvas";
+import useGPUCanvas from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
-import { drawTrajectory } from "@/lib/painter";
+import { drawTexture, drawTrajectory } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
 
@@ -124,18 +124,11 @@ function Main() {
 
 			const bufferIndex = cuebit.getCurrentBufferIndex();
 			const buffer = cuebit.getBuffer(bufferIndex);
-			cameraCanvas.draw((device, context, _width, _height) => {
-				drawTexture(device, context, buffer.frameTexture);
-			});
-			resizedFrameCanvas.draw((device, context, _width, _height) => {
-				drawTexture(device, context, buffer.resizedFrameTexture);
-			});
-			tableMaskDebugCanvas.draw((device, context, _width, _height) => {
-				drawTexture(device, context, buffer.tableMaskFrameTexture);
-			});
-			cueMaskDebugCanvas.draw((device, context, _width, _height) => {
-				drawTexture(device, context, buffer.cueMaskFrameTexture);
-			});
+
+			drawTexture(cameraCanvas, buffer.frameTexture);
+			drawTexture(resizedFrameCanvas, buffer.resizedFrameTexture);
+			drawTexture(tableMaskDebugCanvas, buffer.tableMaskFrameTexture);
+			drawTexture(cueMaskDebugCanvas, buffer.cueMaskFrameTexture);
 
 			const table = result.screenSpaceTable;
 			if (!table) {
