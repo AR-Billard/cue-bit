@@ -29,6 +29,13 @@ export default defineConfig([
 					caughtErrorsIgnorePattern: "^_",
 				},
 			],
+			"prefer-const": [
+				"warn",
+				{
+					destructuring: "any",
+					ignoreReadBeforeAssign: false,
+				},
+			],
 		},
 	},
 ]);
