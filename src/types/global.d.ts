@@ -9,7 +9,7 @@ declare global {
 	};
 
 	type Pass2D = (
-		context: CanvasRenderingContext2D,
+		context: CanvasRenderineContext2D | OffscreenCanvasRenderingContext2D,
 		width: number,
 		height: number,
 	) => void;

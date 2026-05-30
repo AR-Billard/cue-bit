@@ -1,6 +1,13 @@
 import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { argmin, measure, rerange, restoreMat, withMatScope } from "@/common";
+import {
+	argmin,
+	measure,
+	rerange,
+	restoreMat,
+	todo,
+	withMatScope,
+} from "@/common";
 import HitControlPanel from "@/components/hit-params-panel";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
@@ -13,6 +20,19 @@ import { device, onnx } from "@/lib/onnx";
 import { drawTexture, drawTrajectory } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
+
+function createOffscreenCanvasHandle(
+	width: number,
+	height: number,
+): CanvasHandle<"2d"> {
+	const canvas = new OffscreenCanvas(width, height);
+	const context = canvas.getContext("2d") ?? todo("2d context를 얻을 수 없음");
+
+	return {
+		canvas,
+		draw: (pass) => pass(context, width, height),
+	};
+}
 
 /**
  * 큐의 방향정보와 수구, 목적구 정보 분리
