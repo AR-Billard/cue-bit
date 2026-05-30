@@ -106,7 +106,7 @@ function Main() {
 			cuebit: Cuebit,
 			simulator: Simulator,
 			cameraCanvas: CanvasHandle<"webgpu">,
-			resizedFrameCanvas: CanvasHandle<"webgpu">,
+			resizedFrameDebugCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
 			cueMaskDebugCanvas: CanvasHandle<"webgpu">,
 			detectionDebugCanvas: CanvasHandle<"2d">,
@@ -126,7 +126,7 @@ function Main() {
 			const buffer = cuebit.getBuffer(bufferIndex);
 
 			drawTexture(cameraCanvas, buffer.frameTexture);
-			drawTexture(resizedFrameCanvas, buffer.resizedFrameTexture);
+			drawTexture(resizedFrameDebugCanvas, buffer.resizedFrameTexture);
 			drawTexture(tableMaskDebugCanvas, buffer.tableMaskFrameTexture);
 			drawTexture(cueMaskDebugCanvas, buffer.cueMaskFrameTexture);
 
@@ -439,7 +439,7 @@ function Main() {
 			const simulator = new Simulator();
 			logger.info("Simulator instance created");
 
-			const resizedFrameCanvas = await createDebugGPUCanvas(
+			const resizedFrameDebugCanvas = await createDebugGPUCanvas(
 				device,
 				onnx.segementation.input.feeds.image.width,
 				onnx.segementation.input.feeds.image.height,
@@ -519,7 +519,7 @@ function Main() {
 					cuebit,
 					simulator,
 					cameraCanvas,
-					resizedFrameCanvas,
+					resizedFrameDebugCanvas,
 					tableMaskDebugCanvas,
 					cueMaskDebugCanvas,
 					detectionDebugCanvas,
