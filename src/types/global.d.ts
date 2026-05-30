@@ -28,7 +28,7 @@ declare global {
 	};
 
 	type CanvasHandle<T extends keyof ContextMap> = {
-		canvas: HTMLCanvasElement;
+		canvas: HTMLCanvasElement | OffscreenCanvas;
 		draw: (pass: T extends "2d" ? Pass2D : PassWebGPU) => void;
 	};
 
