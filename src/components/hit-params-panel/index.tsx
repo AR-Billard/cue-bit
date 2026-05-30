@@ -178,64 +178,66 @@ function HitControlPanel(props: HitControlPanelProps) {
 					/>
 				</div>
 
-				<div
-					style={{
-						width: "60%",
-						height: "auto",
-						aspectRatio: "1 / 1",
-						borderRadius: "50%",
-						position: "relative",
-						touchAction: "none",
-					}}
-					onPointerDown={onHitAngleChange}
-					onPointerMove={onHitAngleChange}
-				>
+				{props.onHitAngleChange && (
 					<div
 						style={{
-							position: "absolute",
-							width: "80%",
-							height: "80%",
-							top: "50%",
-							left: "50%",
-							transform: "translate(-50%, -50%)",
-							border: "1px dashed rgba(0, 0, 0, 0.28)",
+							width: "60%",
+							height: "auto",
+							aspectRatio: "1 / 1",
 							borderRadius: "50%",
+							position: "relative",
+							touchAction: "none",
 						}}
-					/>
-
-					<div
-						style={{
-							position: "absolute",
-							width: "100%",
-							height: "100%",
-							rotate: `${-hitAngle}rad`,
-						}}
+						onPointerDown={onHitAngleChange}
+						onPointerMove={onHitAngleChange}
 					>
 						<div
 							style={{
 								position: "absolute",
-								width: "72%",
-								height: "1px",
+								width: "80%",
+								height: "80%",
 								top: "50%",
 								left: "50%",
 								transform: "translate(-50%, -50%)",
-								border: "1px solid rgba(0, 0, 0, 0.28)",
+								border: "1px dashed rgba(0, 0, 0, 0.28)",
+								borderRadius: "50%",
 							}}
 						/>
+
 						<div
 							style={{
 								position: "absolute",
-								width: "10%",
-								height: "10%",
-								top: "50%",
-								left: "80%",
-								transform: "translate(-50%, -50%) rotate(45deg)",
-								borderTop: "2px solid rgba(0, 0, 0, 0.28)",
-								borderRight: "2px solid rgba(0, 0, 0, 0.28)",
+								width: "100%",
+								height: "100%",
+								rotate: `${-hitAngle}rad`,
 							}}
-						/>
+						>
+							<div
+								style={{
+									position: "absolute",
+									width: "72%",
+									height: "1px",
+									top: "50%",
+									left: "50%",
+									transform: "translate(-50%, -50%)",
+									border: "1px solid rgba(0, 0, 0, 0.28)",
+								}}
+							/>
+							<div
+								style={{
+									position: "absolute",
+									width: "10%",
+									height: "10%",
+									top: "50%",
+									left: "80%",
+									transform: "translate(-50%, -50%) rotate(45deg)",
+									borderTop: "2px solid rgba(0, 0, 0, 0.28)",
+									borderRight: "2px solid rgba(0, 0, 0, 0.28)",
+								}}
+							/>
+						</div>
 					</div>
-				</div>
+				)}
 			</div>
 		</div>
 	);
