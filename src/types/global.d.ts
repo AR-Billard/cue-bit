@@ -57,7 +57,7 @@ declare global {
 	};
 
 	type Trajectory = {
-		readonly target: BallSnapshot;
-		readonly others: BallSnapshot[];
+		readonly cueBall: BallSnapshot;
+		readonly objectBalls: BallSnapshot[];
 	};
 }
