@@ -129,15 +129,6 @@ interface Postprocess {
 	} | null;
 }
 
-interface Quad {
-	readonly points: {
-		readonly topLeft: Vector2;
-		readonly bottomLeft: Vector2;
-		readonly bottomRight: Vector2;
-		readonly topRight: Vector2;
-	};
-}
-
 function dist(a: Vector2, b: Vector2): number {
 	return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -909,6 +900,10 @@ class Cuebit {
 
 		const [tableMask, cueMask] = await this.getMask(buffer, table, cue);
 
+		logger.info(
+			`테이블 마스크: ${tableMask ? "생성됨" : "생성 실패"}, 큐 마스크: ${cueMask ? "생성됨" : "생성 실패"}`,
+		);
+
 		return {
 			table: table && {
 				bbox: {
@@ -948,13 +943,7 @@ class Cuebit {
 	}
 
 	private getTablePoints(result: Postprocess) {
-		if (!result.table) {
-			logger.info("테이블 감지 실패");
-			return null;
-		}
-
-		if (!result.table.mask) {
-			logger.info("테이블 마스크 생성 실패");
+		if (!result.table?.mask) {
 			return null;
 		}
 
@@ -972,13 +961,7 @@ class Cuebit {
 	}
 
 	private getCuePoints(result: Postprocess) {
-		if (!result.cue) {
-			logger.info("큐 감지 실패");
-			return null;
-		}
-
-		if (!result.cue.mask) {
-			logger.info("큐 마스크 생성 실패");
+		if (!result.cue?.mask) {
 			return null;
 		}
 
@@ -1068,7 +1051,7 @@ class Cuebit {
 			this.onnx.segementation.output.fetchs.protos.height /
 			this.onnx.segementation.input.feeds.image.height;
 
-		const balls =
+		const screenSpaceBallPoints: Vector2[] =
 			postprocessResult?.balls?.map((ball) => ({
 				x: ball.x * scaleFactorX,
 				y: ball.y * scaleFactorY,
@@ -1076,22 +1059,23 @@ class Cuebit {
 
 		return {
 			// TODO: 리팩토링 필요
-			table: postprocessResult?.table &&
-				table && {
-					bbox: postprocessResult?.table?.bbox,
-					quad: quadForTable,
-					matrix: table.matrix,
-				},
-			balls,
-			cue: postprocessResult?.cue &&
-				pointsForCue && {
-					bbox: postprocessResult.cue.bbox,
-					line: {
-						start: pointsForCue[0],
-						end: pointsForCue[1],
-					},
-				},
-		};
+			screenSpaceTable:
+				postprocessResult?.table && table
+					? {
+							bbox: postprocessResult?.table?.bbox,
+							quad: quadForTable,
+							matrix: table.matrix,
+						}
+					: null,
+			screenSpaceBallPoints,
+			screenSpaceCue: postprocessResult?.cue
+				? pointsForCue &&
+					({
+						bbox: postprocessResult.cue.bbox,
+						points: [pointsForCue[0], pointsForCue[1]],
+					} as const)
+				: null,
+		} as const;
 	}
 
 	public getCurrentBufferIndex(): BufferIndex {

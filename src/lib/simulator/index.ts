@@ -7,7 +7,7 @@ type SimulationConfig = {
 		height: number;
 	};
 	ball: {
-		count: number;
+		maxCount: number;
 		radius: number;
 	};
 	physics: {
@@ -39,7 +39,7 @@ class Simulator {
 				height: 1.422,
 			},
 			ball: {
-				count: 4,
+				maxCount: 10,
 				radius: 0.0655 / 2,
 			},
 			physics: {
@@ -82,7 +82,7 @@ class Simulator {
 			),
 		];
 		this.cueBall = this.createBall(config.ball.radius);
-		this.objectBalls = Array.from({ length: config.ball.count - 1 }, () =>
+		this.objectBalls = Array.from({ length: config.ball.maxCount - 1 }, () =>
 			this.createBall(config.ball.radius),
 		);
 	}
@@ -177,7 +177,7 @@ class Simulator {
 		hitPoint: Vector2,
 	): [Trajectory, () => Trajectory] {
 		if (objectBallPositions.length > this.objectBalls.length) {
-			throw new Error("Too many balls");
+			logger.warn("Too many balls");
 		}
 
 		this.cueBall.rigidbody.setTranslation(

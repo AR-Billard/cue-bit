@@ -60,4 +60,26 @@ declare global {
 		readonly cueBall: BallSnapshot;
 		readonly objectBalls: BallSnapshot[];
 	};
+
+	type Quad = {
+		readonly points: {
+			readonly topLeft: Vector2;
+			readonly bottomLeft: Vector2;
+			readonly bottomRight: Vector2;
+			readonly topRight: Vector2;
+		};
+	};
+
+	type Line = {
+		readonly start: Vector2;
+		readonly end: Vector2;
+	};
+
+	type Cue = {
+		readonly line: Line;
+		/**
+		 * radian
+		 */
+		readonly angle: number;
+	};
 }

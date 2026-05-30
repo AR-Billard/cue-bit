@@ -110,3 +110,15 @@ export function exportMatToPNG(mat: cv.Mat, fileName = "output.png") {
 	link.download = fileName;
 	link.click();
 }
+
+export function argmin<T>(array: T[]): number {
+	let minIndex = 0;
+	let minValue = array[0];
+	for (let i = 1; i < array.length; i++) {
+		if (array[i] < minValue) {
+			minValue = array[i];
+			minIndex = i;
+		}
+	}
+	return minIndex;
+}

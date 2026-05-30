@@ -1,6 +1,6 @@
 import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { measure, rerange, restoreMat, withMatScope } from "@/common";
+import { argmin, measure, rerange, restoreMat, withMatScope } from "@/common";
 import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
@@ -12,6 +12,62 @@ import { device, onnx } from "@/lib/onnx";
 import { drawTrajectory } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
+
+/**
+ * 큐의 방향정보와 수구, 목적구 정보 분리
+ * @param cuePoints
+ * @param ballPoints
+ * @returns
+ */
+function resolveTableState(
+	cuePoints: [Vector2, Vector2],
+	ballPoints: Vector2[],
+): {
+	cue: Cue;
+	cueBall: Vector2 | null;
+	objectBalls: Vector2[];
+} {
+	let line: Line = {
+		start: cuePoints[0],
+		end: cuePoints[1],
+	};
+	let cueBallCandidate: {
+		point: Vector2;
+		distance: number;
+	} | null = null;
+	const objectBalls: Vector2[] = [];
+
+	for (const ballPoint of ballPoints) {
+		const distances = cuePoints.map((cuePoint) =>
+			Math.hypot(ballPoint.x - cuePoint.x, ballPoint.y - cuePoint.y),
+		);
+		const cueTipIndex = argmin(distances);
+		const minDistance = distances[cueTipIndex];
+
+		if (cueBallCandidate === null || minDistance < cueBallCandidate.distance) {
+			cueBallCandidate = { point: ballPoint, distance: minDistance };
+			line = {
+				start: cuePoints[1 - cueTipIndex],
+				end: cuePoints[cueTipIndex],
+			};
+
+			if (cueBallCandidate !== null) {
+				objectBalls.push(cueBallCandidate.point);
+			}
+		} else {
+			objectBalls.push(ballPoint);
+		}
+	}
+
+	return {
+		cue: {
+			line,
+			angle: Math.atan2(line.end.y - line.start.y, line.end.x - line.start.x),
+		},
+		cueBall: cueBallCandidate?.point ?? null,
+		objectBalls,
+	};
+}
 
 /**
  * 메인 페이지.
@@ -77,7 +133,7 @@ function Main() {
 				drawTexture(device, context, buffer.cueMaskFrameTexture);
 			});
 
-			const table = result.table;
+			const table = result.screenSpaceTable;
 			if (!table) {
 				return;
 			}
@@ -144,7 +200,7 @@ function Main() {
 					context.stroke();
 				}
 
-				if (result.cue) {
+				if (result.screenSpaceCue) {
 					context.strokeStyle = "green";
 					context.lineWidth = width * 0.002;
 
@@ -152,32 +208,38 @@ function Main() {
 
 					context.fillText(
 						"cue",
-						((result.cue.bbox.lt.x + result.cue.bbox.rb.x) / 2) *
+						((result.screenSpaceCue.bbox.lt.x +
+							result.screenSpaceCue.bbox.rb.x) /
+							2) *
 							widthScaleFactor,
-						result.cue.bbox.lt.y * heightScaleFactor,
+						result.screenSpaceCue.bbox.lt.y * heightScaleFactor,
 					);
 
 					context.rect(
-						result.cue.bbox.lt.x * widthScaleFactor,
-						result.cue.bbox.lt.y * heightScaleFactor,
-						(result.cue.bbox.rb.x - result.cue.bbox.lt.x) * widthScaleFactor,
-						(result.cue.bbox.rb.y - result.cue.bbox.lt.y) * heightScaleFactor,
+						result.screenSpaceCue.bbox.lt.x * widthScaleFactor,
+						result.screenSpaceCue.bbox.lt.y * heightScaleFactor,
+						(result.screenSpaceCue.bbox.rb.x -
+							result.screenSpaceCue.bbox.lt.x) *
+							widthScaleFactor,
+						(result.screenSpaceCue.bbox.rb.y -
+							result.screenSpaceCue.bbox.lt.y) *
+							heightScaleFactor,
 					);
 					context.stroke();
 				}
 
-				if (result.cue?.line) {
+				if (result.screenSpaceCue?.points) {
 					context.strokeStyle = "white";
 					context.lineWidth = width * 0.002;
 
 					context.beginPath();
 					context.moveTo(
-						result.cue.line.start.x * widthScaleFactor,
-						result.cue.line.start.y * heightScaleFactor,
+						result.screenSpaceCue.points[0].x * widthScaleFactor,
+						result.screenSpaceCue.points[0].y * heightScaleFactor,
 					);
 					context.lineTo(
-						result.cue.line.end.x * widthScaleFactor,
-						result.cue.line.end.y * heightScaleFactor,
+						result.screenSpaceCue.points[1].x * widthScaleFactor,
+						result.screenSpaceCue.points[1].y * heightScaleFactor,
 					);
 					context.stroke();
 				}
@@ -185,7 +247,7 @@ function Main() {
 				context.strokeStyle = "blue";
 				context.lineWidth = width * 0.002;
 
-				for (const ball of result.balls) {
+				for (const ball of result.screenSpaceBallPoints) {
 					context.beginPath();
 					context.arc(
 						ball.x * widthScaleFactor,
@@ -198,20 +260,20 @@ function Main() {
 				}
 			});
 
-			const transformedPoints = withMatScope((track) => {
+			const normalizedBallPoints = withMatScope((track) => {
 				const src = track(
 					cv.matFromArray(
-						result.balls.length,
+						result.screenSpaceBallPoints.length,
 						1,
 						cv.CV_32FC2,
-						result.balls.flatMap((p) => [p.x, p.y]),
+						result.screenSpaceBallPoints.flatMap((p) => [p.x, p.y]),
 					),
 				);
 				const dst = track(new cv.Mat());
 				const transform = track(restoreMat(table.matrix.transform));
 				cv.perspectiveTransform(src, dst, transform);
 				const transformedPoints: Vector2[] = [];
-				for (let i = 0; i < result.balls.length; i++) {
+				for (let i = 0; i < result.screenSpaceBallPoints.length; i++) {
 					transformedPoints.push({
 						x: dst.data32F[i * 2],
 						y: dst.data32F[i * 2 + 1],
@@ -221,57 +283,39 @@ function Main() {
 				return transformedPoints;
 			});
 
-			const transformedCue = withMatScope((track) => {
-				if (!result.cue) {
+			const normalizedCuePoints = withMatScope((track) => {
+				if (!result.screenSpaceCue) {
 					return null;
 				}
 
 				const src = track(
 					cv.matFromArray(2, 1, cv.CV_32FC2, [
-						result.cue.line.start.x,
-						result.cue.line.start.y,
-						result.cue.line.end.x,
-						result.cue.line.end.y,
+						result.screenSpaceCue.points[0].x,
+						result.screenSpaceCue.points[0].y,
+						result.screenSpaceCue.points[1].x,
+						result.screenSpaceCue.points[1].y,
 					]),
 				);
 				const dst = track(new cv.Mat());
 				const transform = track(restoreMat(table.matrix.transform));
 				cv.perspectiveTransform(src, dst, transform);
-				return {
-					start: {
+				const points: [Vector2, Vector2] = [
+					{
 						x: dst.data32F[0],
 						y: dst.data32F[1],
 					},
-					end: {
+					{
 						x: dst.data32F[2],
 						y: dst.data32F[3],
 					},
-				};
+				];
+
+				return points;
 			});
 
-			const cueBall: Vector2 | null =
-				(transformedCue &&
-					transformedPoints.reduce(
-						(closest, point) => {
-							const distance1 = Math.hypot(
-								point.x - transformedCue.start.x,
-								point.y - transformedCue.start.y,
-							);
-							const distance2 = Math.hypot(
-								point.x - transformedCue.end.x,
-								point.y - transformedCue.end.y,
-							);
-							const distance = Math.min(distance1, distance2);
-							// TODO: 일단은 cue stick 양 끝점과 가장 가까운 공을 큐볼로 간주하는데, 좀 더 정교한 로직으로 개선해볼 수 있을듯
-							if (closest === null || distance < closest.distance) {
-								return { point, distance };
-							} else {
-								return closest;
-							}
-						},
-						null as { point: Vector2; distance: number } | null,
-					)?.point) ??
-				null;
+			const resolvedState =
+				normalizedCuePoints &&
+				resolveTableState(normalizedCuePoints, normalizedBallPoints);
 
 			normalizedTableDebugCanvas.draw((context, width, height) => {
 				const widthScaleFactor = width / 2844;
@@ -286,8 +330,8 @@ function Main() {
 				context.textBaseline = "bottom";
 
 				let i = 0;
-				for (const point of transformedPoints) {
-					if (point === cueBall) {
+				for (const point of normalizedBallPoints) {
+					if (point === resolvedState?.cueBall) {
 						context.fillText(
 							`c`,
 							point.x * widthScaleFactor,
@@ -313,36 +357,33 @@ function Main() {
 					i++;
 				}
 
-				if (transformedCue) {
+				if (normalizedCuePoints) {
 					context.strokeStyle = "white";
 					context.lineWidth = width * 0.002;
 
 					context.beginPath();
 					context.moveTo(
-						transformedCue.start.x * widthScaleFactor,
-						transformedCue.start.y * heightScaleFactor,
+						normalizedCuePoints[0].x * widthScaleFactor,
+						normalizedCuePoints[0].y * heightScaleFactor,
 					);
 					context.lineTo(
-						transformedCue.end.x * widthScaleFactor,
-						transformedCue.end.y * heightScaleFactor,
+						normalizedCuePoints[1].x * widthScaleFactor,
+						normalizedCuePoints[1].y * heightScaleFactor,
 					);
 					context.stroke();
 				}
 			});
 
-			if (cueBall && transformedCue) {
+			if (resolvedState?.cueBall) {
 				const [initialTrajectory, step] = simulator.simulate(
-					rerange(cueBall, 2844, 2.844),
-					// TODO: 최적화 필요
-					transformedPoints
-						.filter((point) => point !== cueBall)
-						.map((p) => rerange(p, 2844, 2.844)),
-					Math.atan2(
-						transformedCue.end.y - transformedCue.start.y,
-						transformedCue.end.x - transformedCue.start.x,
-					),
+					rerange(resolvedState.cueBall, 2844, 2.844),
+					resolvedState.objectBalls.map((p) => rerange(p, 2844, 2.844)),
+					resolvedState.cue.angle,
 					1,
-					{ x: 0.5, y: 0.5 },
+					{
+						x: 0,
+						y: 0,
+					},
 				);
 
 				const trajectories = [initialTrajectory];
@@ -351,7 +392,6 @@ function Main() {
 					trajectories.push(trajectory);
 				}
 
-				// TODO: Float32Array 로 캐시히트 최적화 해볼수 있을듯
 				drawTrajectory(trajectoryDebugCanvas, trajectories);
 			}
 		},
