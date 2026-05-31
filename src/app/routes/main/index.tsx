@@ -2,6 +2,7 @@ import cv from "@techstark/opencv-js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
 	argmin,
+	dist,
 	measure,
 	rerange,
 	restoreMat,
@@ -17,7 +18,7 @@ import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
-import { drawTexture, drawTrajectory } from "@/lib/painter";
+import { drawTexture, drawTrajectory, TextureTransformer } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
 
@@ -41,27 +42,25 @@ function createOffscreenCanvasHandle(
  * @returns
  */
 function resolveTableState(
-	cuePoints: [Vector2, Vector2],
-	ballPoints: Vector2[],
+	cuePoints: [Vector2<"normalized">, Vector2<"normalized">],
+	ballPoints: Vector2<"normalized">[],
 ): {
 	cue: Cue;
-	cueBall: Vector2 | null;
-	objectBalls: Vector2[];
+	cueBall: Vector2<"normalized"> | null;
+	objectBalls: Vector2<"normalized">[];
 } {
-	let line: Line = {
+	let line: Line<"normalized"> = {
 		start: cuePoints[0],
 		end: cuePoints[1],
 	};
 	let cueBallCandidate: {
-		point: Vector2;
+		point: Vector2<"normalized">;
 		distance: number;
 	} | null = null;
-	const objectBalls: Vector2[] = [];
+	const objectBalls: Vector2<"normalized">[] = [];
 
 	for (const ballPoint of ballPoints) {
-		const distances = cuePoints.map((cuePoint) =>
-			Math.hypot(ballPoint.x - cuePoint.x, ballPoint.y - cuePoint.y),
-		);
+		const distances = cuePoints.map((cuePoint) => dist(ballPoint, cuePoint));
 		const cueTipIndex = argmin(distances);
 		const minDistance = distances[cueTipIndex];
 
@@ -99,6 +98,10 @@ function Main() {
 	 */
 	const [createCameraCanvas, cameraCanvasSpec] = useGPUCanvas();
 	/**
+	 * 오버레이 Canvas
+	 */
+	const [createOverlayCanvas, overlayCanvasSpec] = useGPUCanvas();
+	/**
 	 * Debug Canvas
 	 */
 	const [
@@ -112,7 +115,7 @@ function Main() {
 	 */
 	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 
-	const hitPointRef = useRef<Vector2>({ x: 0, y: 0 });
+	const hitPointRef = useRef<Vector2<"unit">>({ x: 0, y: 0 });
 	const hitPowerRef = useRef(0.5);
 
 	/**
@@ -126,6 +129,9 @@ function Main() {
 			cuebit: Cuebit,
 			simulator: Simulator,
 			cameraCanvas: CanvasHandle<"webgpu">,
+			trajectoryDrawerCanvas: CanvasHandle<"2d">,
+			overlayCanvas: CanvasHandle<"webgpu">,
+			textureTransformer: TextureTransformer,
 			resizedFrameDebugCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
 			cueMaskDebugCanvas: CanvasHandle<"webgpu">,
@@ -150,263 +156,284 @@ function Main() {
 			drawTexture(tableMaskDebugCanvas, buffer.tableMaskFrameTexture);
 			drawTexture(cueMaskDebugCanvas, buffer.cueMaskFrameTexture);
 
-			const table = result.screenSpaceTable;
-			if (!table) {
-				return;
-			}
-
 			detectionDebugCanvas.draw((context, width, height) => {
-				const widthScaleFactor = width / 160;
-				const heightScaleFactor = height / 160;
+				const protoToCanvasX =
+					width / onnx.segementation.output.fetchs.protos.width;
+				const protoToCanvasY =
+					height / onnx.segementation.output.fetchs.protos.height;
+				const feedToCanvasX =
+					width / onnx.segementation.input.feeds.image.width;
+				const feedToCanvasY =
+					height / onnx.segementation.input.feeds.image.height;
 
 				context.clearRect(0, 0, width, height);
 
-				if (table.quad) {
-					context.strokeStyle = "green";
+				if (result.table) {
+					context.strokeStyle = "blue";
 					context.lineWidth = width * 0.002;
 
 					context.beginPath();
 
 					context.fillText(
 						"table",
-						((table.bbox.lt.x + table.bbox.rb.x) / 2) * widthScaleFactor,
-						table.bbox.lt.y * heightScaleFactor,
+						((result.table.mask.detection.bbox.lt.x +
+							result.table.mask.detection.bbox.rb.x) /
+							2) *
+							feedToCanvasX,
+						result.table.mask.detection.bbox.lt.y * feedToCanvasY,
 					);
 
 					context.rect(
-						table.bbox.lt.x * widthScaleFactor,
-						table.bbox.lt.y * heightScaleFactor,
-						(table.bbox.rb.x - table.bbox.lt.x) * widthScaleFactor,
-						(table.bbox.rb.y - table.bbox.lt.y) * heightScaleFactor,
+						result.table.mask.detection.bbox.lt.x * feedToCanvasX,
+						result.table.mask.detection.bbox.lt.y * feedToCanvasY,
+						(result.table.mask.detection.bbox.rb.x -
+							result.table.mask.detection.bbox.lt.x) *
+							feedToCanvasX,
+						(result.table.mask.detection.bbox.rb.y -
+							result.table.mask.detection.bbox.lt.y) *
+							feedToCanvasY,
 					);
 					context.stroke();
 
-					context.strokeStyle = "red";
-					context.lineWidth = width * 0.005;
-					context.font = `${width * 0.05}px Arial`;
-					context.fillStyle = "red";
-					context.textAlign = "center";
-					context.textBaseline = "bottom";
+					if (result.table.transform) {
+						context.strokeStyle = "red";
+						context.lineWidth = width * 0.005;
+						context.font = `${width * 0.02}px Arial`;
+						context.fillStyle = "red";
+						context.textAlign = "center";
+						context.textBaseline = "bottom";
 
-					context.beginPath();
+						context.beginPath();
 
-					const points = [
-						table.quad.points.topLeft,
-						table.quad.points.bottomLeft,
-						table.quad.points.bottomRight,
-						table.quad.points.topRight,
-					];
+						const points = [
+							result.table.transform.quad.points.topLeft,
+							result.table.transform.quad.points.bottomLeft,
+							result.table.transform.quad.points.bottomRight,
+							result.table.transform.quad.points.topRight,
+						];
 
-					for (let i = 0; i < 4; i++) {
-						const point = points[i];
-						context.fillText(
-							`${i}`,
-							point.x * widthScaleFactor,
-							point.y * heightScaleFactor,
-						);
-						context.moveTo(
-							point.x * widthScaleFactor,
-							point.y * heightScaleFactor,
-						);
-						const nextPoint = points[(i + 1) % 4];
-						context.lineTo(
-							nextPoint.x * widthScaleFactor,
-							nextPoint.y * heightScaleFactor,
-						);
+						for (let i = 0; i < 4; i++) {
+							const point = points[i];
+							context.fillText(
+								`${i}`,
+								point.x * protoToCanvasX,
+								point.y * protoToCanvasY,
+							);
+							context.moveTo(
+								point.x * protoToCanvasX,
+								point.y * protoToCanvasY,
+							);
+							const nextPoint = points[(i + 1) % 4];
+							context.lineTo(
+								nextPoint.x * protoToCanvasX,
+								nextPoint.y * protoToCanvasY,
+							);
+						}
+						context.stroke();
 					}
-					context.stroke();
 				}
 
-				if (result.screenSpaceCue) {
-					context.strokeStyle = "green";
+				if (result.cue) {
+					context.strokeStyle = "blue";
 					context.lineWidth = width * 0.002;
 
 					context.beginPath();
 
 					context.fillText(
 						"cue",
-						((result.screenSpaceCue.bbox.lt.x +
-							result.screenSpaceCue.bbox.rb.x) /
+						((result.cue.mask.detection.bbox.lt.x +
+							result.cue.mask.detection.bbox.rb.x) /
 							2) *
-							widthScaleFactor,
-						result.screenSpaceCue.bbox.lt.y * heightScaleFactor,
+							feedToCanvasX,
+						result.cue.mask.detection.bbox.lt.y * feedToCanvasY,
 					);
 
 					context.rect(
-						result.screenSpaceCue.bbox.lt.x * widthScaleFactor,
-						result.screenSpaceCue.bbox.lt.y * heightScaleFactor,
-						(result.screenSpaceCue.bbox.rb.x -
-							result.screenSpaceCue.bbox.lt.x) *
-							widthScaleFactor,
-						(result.screenSpaceCue.bbox.rb.y -
-							result.screenSpaceCue.bbox.lt.y) *
-							heightScaleFactor,
+						result.cue.mask.detection.bbox.lt.x * feedToCanvasX,
+						result.cue.mask.detection.bbox.lt.y * feedToCanvasY,
+						(result.cue.mask.detection.bbox.rb.x -
+							result.cue.mask.detection.bbox.lt.x) *
+							feedToCanvasX,
+						(result.cue.mask.detection.bbox.rb.y -
+							result.cue.mask.detection.bbox.lt.y) *
+							feedToCanvasY,
 					);
 					context.stroke();
-				}
 
-				if (result.screenSpaceCue?.points) {
-					context.strokeStyle = "white";
-					context.lineWidth = width * 0.002;
+					if (result.cue.points) {
+						context.strokeStyle = "white";
+						context.lineWidth = width * 0.002;
 
-					context.beginPath();
-					context.moveTo(
-						result.screenSpaceCue.points[0].x * widthScaleFactor,
-						result.screenSpaceCue.points[0].y * heightScaleFactor,
-					);
-					context.lineTo(
-						result.screenSpaceCue.points[1].x * widthScaleFactor,
-						result.screenSpaceCue.points[1].y * heightScaleFactor,
-					);
-					context.stroke();
-				}
-
-				context.strokeStyle = "blue";
-				context.lineWidth = width * 0.002;
-
-				for (const ball of result.screenSpaceBallPoints) {
-					context.beginPath();
-					context.arc(
-						ball.x * widthScaleFactor,
-						ball.y * heightScaleFactor,
-						width * 0.02,
-						0,
-						2 * Math.PI,
-					);
-					context.stroke();
-				}
-			});
-
-			const normalizedBallPoints = withMatScope((track) => {
-				const src = track(
-					cv.matFromArray(
-						result.screenSpaceBallPoints.length,
-						1,
-						cv.CV_32FC2,
-						result.screenSpaceBallPoints.flatMap((p) => [p.x, p.y]),
-					),
-				);
-				const dst = track(new cv.Mat());
-				const transform = track(restoreMat(table.matrix.transform));
-				cv.perspectiveTransform(src, dst, transform);
-				const transformedPoints: Vector2[] = [];
-				for (let i = 0; i < result.screenSpaceBallPoints.length; i++) {
-					transformedPoints.push({
-						x: dst.data32F[i * 2],
-						y: dst.data32F[i * 2 + 1],
-					});
-				}
-
-				return transformedPoints;
-			});
-
-			const normalizedCuePoints = withMatScope((track) => {
-				if (!result.screenSpaceCue) {
-					return null;
-				}
-
-				const src = track(
-					cv.matFromArray(2, 1, cv.CV_32FC2, [
-						result.screenSpaceCue.points[0].x,
-						result.screenSpaceCue.points[0].y,
-						result.screenSpaceCue.points[1].x,
-						result.screenSpaceCue.points[1].y,
-					]),
-				);
-				const dst = track(new cv.Mat());
-				const transform = track(restoreMat(table.matrix.transform));
-				cv.perspectiveTransform(src, dst, transform);
-				const points: [Vector2, Vector2] = [
-					{
-						x: dst.data32F[0],
-						y: dst.data32F[1],
-					},
-					{
-						x: dst.data32F[2],
-						y: dst.data32F[3],
-					},
-				];
-
-				return points;
-			});
-
-			const resolvedState =
-				normalizedCuePoints &&
-				resolveTableState(normalizedCuePoints, normalizedBallPoints);
-
-			normalizedTableDebugCanvas.draw((context, width, height) => {
-				const widthScaleFactor = width / 2844;
-				const heightScaleFactor = height / 1422;
-
-				context.clearRect(0, 0, width, height);
-				context.strokeStyle = "blue";
-				context.lineWidth = width * 0.002;
-				context.fillStyle = "red";
-				context.font = `${width * 0.05}px Arial`;
-				context.textAlign = "center";
-				context.textBaseline = "bottom";
-
-				let i = 0;
-				for (const point of normalizedBallPoints) {
-					if (point === resolvedState?.cueBall) {
-						context.fillText(
-							`c`,
-							point.x * widthScaleFactor,
-							point.y * heightScaleFactor,
+						context.beginPath();
+						context.moveTo(
+							result.cue.points[0].x * protoToCanvasX,
+							result.cue.points[0].y * protoToCanvasY,
 						);
-					} else {
-						context.fillText(
-							`${i}`,
-							point.x * widthScaleFactor,
-							point.y * heightScaleFactor,
+						context.lineTo(
+							result.cue.points[1].x * protoToCanvasX,
+							result.cue.points[1].y * protoToCanvasY,
 						);
+						context.stroke();
 					}
 
-					context.beginPath();
-					context.arc(
-						point.x * widthScaleFactor,
-						point.y * heightScaleFactor,
-						width * 0.02,
-						0,
-						2 * Math.PI,
-					);
-					context.stroke();
-					i++;
-				}
-
-				if (normalizedCuePoints) {
-					context.strokeStyle = "white";
+					context.strokeStyle = "blue";
 					context.lineWidth = width * 0.002;
 
-					context.beginPath();
-					context.moveTo(
-						normalizedCuePoints[0].x * widthScaleFactor,
-						normalizedCuePoints[0].y * heightScaleFactor,
-					);
-					context.lineTo(
-						normalizedCuePoints[1].x * widthScaleFactor,
-						normalizedCuePoints[1].y * heightScaleFactor,
-					);
-					context.stroke();
+					for (const ball of result.ballPoints) {
+						context.beginPath();
+						context.arc(
+							ball.x * protoToCanvasX,
+							ball.y * protoToCanvasY,
+							width * 0.02,
+							0,
+							2 * Math.PI,
+						);
+						context.stroke();
+					}
 				}
 			});
 
-			if (resolvedState?.cueBall) {
-				const [initialTrajectory, step] = simulator.simulate(
-					rerange(resolvedState.cueBall, 2844, 2.844),
-					resolvedState.objectBalls.map((p) => rerange(p, 2844, 2.844)),
-					resolvedState.cue.angle,
-					hitPowerRef.current,
-					hitPointRef.current,
-				);
+			const tableTransform = result.table?.transform;
+			const cuePoints = result.cue?.points;
+			if (tableTransform && cuePoints) {
+				const normalizedBallPoints = withMatScope((track) => {
+					const src = track(
+						cv.matFromArray(
+							result.ballPoints.length,
+							1,
+							cv.CV_32FC2,
+							result.ballPoints.flatMap((p) => [p.x, p.y]),
+						),
+					);
+					const dst = track(new cv.Mat());
+					const transform = track(restoreMat(tableTransform.matrix.transform));
+					cv.perspectiveTransform(src, dst, transform);
+					const transformedPoints: Vector2<"normalized">[] = [];
+					for (let i = 0; i < result.ballPoints.length; i++) {
+						transformedPoints.push({
+							x: dst.data32F[i * 2],
+							y: dst.data32F[i * 2 + 1],
+						});
+					}
 
-				const trajectories = [initialTrajectory];
-				for (let i = 0; i < 600; i++) {
-					const trajectory = step();
-					trajectories.push(trajectory);
+					return transformedPoints;
+				});
+
+				const normalizedCuePoints = withMatScope((track) => {
+					if (!result.cue) {
+						return null;
+					}
+
+					const src = track(
+						cv.matFromArray(2, 1, cv.CV_32FC2, [
+							cuePoints[0].x,
+							cuePoints[0].y,
+							cuePoints[1].x,
+							cuePoints[1].y,
+						]),
+					);
+					const dst = track(new cv.Mat());
+					const transform = track(restoreMat(tableTransform.matrix.transform));
+					cv.perspectiveTransform(src, dst, transform);
+					const points: [Vector2<"normalized">, Vector2<"normalized">] = [
+						{
+							x: dst.data32F[0],
+							y: dst.data32F[1],
+						},
+						{
+							x: dst.data32F[2],
+							y: dst.data32F[3],
+						},
+					];
+
+					return points;
+				});
+
+				const resolvedState =
+					normalizedCuePoints &&
+					resolveTableState(normalizedCuePoints, normalizedBallPoints);
+
+				normalizedTableDebugCanvas.draw((context, width, height) => {
+					const widthScaleFactor = width / 2844;
+					const heightScaleFactor = height / 1422;
+
+					context.clearRect(0, 0, width, height);
+					context.strokeStyle = "blue";
+					context.lineWidth = width * 0.002;
+					context.fillStyle = "red";
+					context.font = `${width * 0.05}px Arial`;
+					context.textAlign = "center";
+					context.textBaseline = "bottom";
+
+					let i = 0;
+					for (const point of normalizedBallPoints) {
+						if (point === resolvedState?.cueBall) {
+							context.fillText(
+								`c`,
+								point.x * widthScaleFactor,
+								point.y * heightScaleFactor,
+							);
+						} else {
+							context.fillText(
+								`${i}`,
+								point.x * widthScaleFactor,
+								point.y * heightScaleFactor,
+							);
+						}
+
+						context.beginPath();
+						context.arc(
+							point.x * widthScaleFactor,
+							point.y * heightScaleFactor,
+							width * 0.02,
+							0,
+							2 * Math.PI,
+						);
+						context.stroke();
+						i++;
+					}
+
+					if (normalizedCuePoints) {
+						context.strokeStyle = "white";
+						context.lineWidth = width * 0.002;
+
+						context.beginPath();
+						context.moveTo(
+							normalizedCuePoints[0].x * widthScaleFactor,
+							normalizedCuePoints[0].y * heightScaleFactor,
+						);
+						context.lineTo(
+							normalizedCuePoints[1].x * widthScaleFactor,
+							normalizedCuePoints[1].y * heightScaleFactor,
+						);
+						context.stroke();
+					}
+				});
+
+				if (resolvedState?.cueBall) {
+					const [initialTrajectory, step] = simulator.simulate(
+						rerange(resolvedState.cueBall, 2844, 2.844),
+						resolvedState.objectBalls.map((p) => rerange(p, 2844, 2.844)),
+						resolvedState.cue.angle,
+						hitPowerRef.current,
+						hitPointRef.current,
+					);
+
+					const trajectories = [initialTrajectory];
+					for (let i = 0; i < 600; i++) {
+						const trajectory = step();
+						trajectories.push(trajectory);
+					}
+
+					drawTrajectory(trajectoryDebugCanvas, trajectories);
+
+					drawTrajectory(trajectoryDrawerCanvas, trajectories);
+					textureTransformer.drawTransformed(
+						trajectoryDrawerCanvas,
+						overlayCanvas,
+						tableTransform.matrix.inverseTransform,
+					);
 				}
-
-				drawTrajectory(trajectoryDebugCanvas, trajectories);
 			}
 		},
 	);
@@ -416,137 +443,175 @@ function Main() {
 		const ac = new AbortController();
 
 		(async () => {
-			// 카메라 스트림 가져오기
-			const stream = await navigator.mediaDevices.getUserMedia({
-				// 오디오 스트림은 사용하지 않음
-				audio: false,
-				video: {
-					width: 1000,
-					height: 1000,
-					facingMode: {
-						// 후면 카메라 사용
-						ideal: "environment",
-					},
-				},
-			});
-			// 비디오 트랙 가져오기
-			const [track] = stream.getVideoTracks();
+			try {
+				const guard = <T,>(p: Promise<T>) =>
+					p.then((v) => {
+						ac.signal.throwIfAborted();
+						return v;
+					});
 
-			// 프레임 캡처 유틸 생성
-			const frameCapture = await createFrameCapture(
-				// cleanup 시 프레임 캡처 중단을 위해 signal 전달
-				ac.signal,
-				track,
-			);
-			logger.info(
-				`Frame capture created. width: ${frameCapture.frameInfo.width}, height: ${frameCapture.frameInfo.height}`,
-			);
-
-			const cameraCanvas = await createCameraCanvas(
-				device,
-				frameCapture.frameInfo.width,
-				frameCapture.frameInfo.height,
-			);
-
-			if (ac.signal.aborted) {
-				logger.info("Initialization aborted");
-				return;
-			}
-
-			const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
-			logger.info("Cuebit instance created");
-
-			const simulator = new Simulator();
-			logger.info("Simulator instance created");
-
-			const resizedFrameDebugCanvas = await createDebugGPUCanvas(
-				device,
-				onnx.segementation.input.feeds.image.width,
-				onnx.segementation.input.feeds.image.height,
-				{
-					width: "100cqw",
-					height: "auto",
-					aspectRatio: "1 / 1",
-				},
-				"Resized Frame",
-			);
-			const tableMaskDebugCanvas = await createDebugGPUCanvas(
-				device,
-				onnx.segementation.output.fetchs.protos.width,
-				onnx.segementation.output.fetchs.protos.height,
-				{
-					width: "100cqw",
-					height: "100cqh",
-					objectFit: "cover",
-					objectPosition: "50% 50%",
-					opacity: 0.2,
-				},
-				"Table Mask",
-			);
-			const cueMaskDebugCanvas = await createDebugGPUCanvas(
-				device,
-				onnx.segementation.output.fetchs.protos.width,
-				onnx.segementation.output.fetchs.protos.height,
-				{
-					width: "100cqw",
-					height: "100cqh",
-					objectFit: "cover",
-					objectPosition: "50% 50%",
-					opacity: 0.8,
-				},
-				"Cue Mask",
-			);
-			const detectionDebugCanvas = await createDebug2DCanvas(
-				frameCapture.frameInfo.width,
-				frameCapture.frameInfo.height,
-				{
-					width: "100cqw",
-					height: "100cqh",
-					objectFit: "cover",
-					objectPosition: "50% 50%",
-				},
-				"Detection Result",
-			);
-			const normalizedTableDebugCanvas = await createDebug2DCanvas(
-				2844,
-				1422,
-				{
-					width: "100cqw",
-					height: "auto",
-					aspectRatio: "2 / 1",
-				},
-				"Normalized Detection Result",
-			);
-
-			const trajectoryDebugCanvas = await createDebug2DCanvas(
-				2844,
-				1422,
-				{
-					width: "100cqw",
-					height: "auto",
-					aspectRatio: "2 / 1",
-				},
-				"Trajectory",
-			);
-
-			if (ac.signal.aborted) {
-				return;
-			}
-
-			frameCapture.on(async (frame) => {
-				await loop(
-					frame,
-					cuebit,
-					simulator,
-					cameraCanvas,
-					resizedFrameDebugCanvas,
-					tableMaskDebugCanvas,
-					cueMaskDebugCanvas,
-					detectionDebugCanvas,
-					normalizedTableDebugCanvas,
-					trajectoryDebugCanvas,
+				// 카메라 스트림 가져오기
+				const stream = await guard(
+					navigator.mediaDevices.getUserMedia({
+						// 오디오 스트림은 사용하지 않음
+						audio: false,
+						video: {
+							width: 1000,
+							height: 1000,
+							facingMode: {
+								// 후면 카메라 사용
+								ideal: "environment",
+							},
+						},
+					}),
 				);
-			});
+				// 비디오 트랙 가져오기
+				const [track] = stream.getVideoTracks();
+
+				// 프레임 캡처 유틸 생성
+				const frameCapture = await guard(
+					createFrameCapture(
+						// cleanup 시 프레임 캡처 중단을 위해 signal 전달
+						ac.signal,
+						track,
+					),
+				);
+				logger.info(
+					`Frame capture created. width: ${frameCapture.frameInfo.width}, height: ${frameCapture.frameInfo.height}`,
+				);
+
+				const cameraCanvas = await guard(
+					createCameraCanvas(
+						device,
+						frameCapture.frameInfo.width,
+						frameCapture.frameInfo.height,
+					),
+				);
+
+				const trajectoryDrawerCanvas = createOffscreenCanvasHandle(2844, 1422);
+
+				const overlayCanvas = await guard(
+					createOverlayCanvas(
+						device,
+						frameCapture.frameInfo.width,
+						frameCapture.frameInfo.height,
+					),
+				);
+
+				const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
+				logger.info("Cuebit instance created");
+
+				const simulator = new Simulator();
+				logger.info("Simulator instance created");
+
+				const resizedFrameDebugCanvas = await guard(
+					createDebugGPUCanvas(
+						device,
+						onnx.segementation.input.feeds.image.width,
+						onnx.segementation.input.feeds.image.height,
+						{
+							width: "100cqw",
+							height: "auto",
+							aspectRatio: "1 / 1",
+						},
+						"Resized Frame",
+					),
+				);
+				const tableMaskDebugCanvas = await guard(
+					createDebugGPUCanvas(
+						device,
+						onnx.segementation.output.fetchs.protos.width,
+						onnx.segementation.output.fetchs.protos.height,
+						{
+							width: "100cqw",
+							height: "100cqh",
+							objectFit: "cover",
+							objectPosition: "50% 50%",
+							opacity: 0.2,
+						},
+						"Table Mask",
+					),
+				);
+				const cueMaskDebugCanvas = await guard(
+					createDebugGPUCanvas(
+						device,
+						onnx.segementation.output.fetchs.protos.width,
+						onnx.segementation.output.fetchs.protos.height,
+						{
+							width: "100cqw",
+							height: "100cqh",
+							objectFit: "cover",
+							objectPosition: "50% 50%",
+							opacity: 0.8,
+						},
+						"Cue Mask",
+					),
+				);
+				const detectionDebugCanvas = await guard(
+					createDebug2DCanvas(
+						frameCapture.frameInfo.width,
+						frameCapture.frameInfo.height,
+						{
+							width: "100cqw",
+							height: "100cqh",
+							objectFit: "cover",
+							objectPosition: "50% 50%",
+						},
+						"Detection Result",
+					),
+				);
+				const normalizedTableDebugCanvas = await guard(
+					createDebug2DCanvas(
+						2844,
+						1422,
+						{
+							width: "100cqw",
+							height: "auto",
+							aspectRatio: "2 / 1",
+						},
+						"Normalized Detection Result",
+					),
+				);
+
+				const trajectoryDebugCanvas = await guard(
+					createDebug2DCanvas(
+						2844,
+						1422,
+						{
+							width: "100cqw",
+							height: "auto",
+							aspectRatio: "2 / 1",
+						},
+						"Trajectory",
+					),
+				);
+
+				const textureTransformer = new TextureTransformer(device, 2844, 1422);
+
+				frameCapture.on(async (frame) => {
+					await loop(
+						frame,
+						cuebit,
+						simulator,
+						cameraCanvas,
+						trajectoryDrawerCanvas,
+						overlayCanvas,
+						textureTransformer,
+						resizedFrameDebugCanvas,
+						tableMaskDebugCanvas,
+						cueMaskDebugCanvas,
+						detectionDebugCanvas,
+						normalizedTableDebugCanvas,
+						trajectoryDebugCanvas,
+					);
+				});
+			} catch (error) {
+				if (error instanceof Error && error.name === "AbortError") {
+					logger.info("Initialization aborted");
+				} else {
+					throw error;
+				}
+			}
 		})();
 
 		return () => {
@@ -555,6 +620,7 @@ function Main() {
 		};
 	}, [
 		createCameraCanvas,
+		createOverlayCanvas,
 		createDebug2DCanvas,
 		createDebugGPUCanvas,
 		clearDebugCanvasSpecs,
@@ -669,7 +735,24 @@ function Main() {
 			</div>
 
 			{/* 오버레이 */}
-			{/* <canvas ref={overlayCanvasRef} className={styles.arCanvas} /> */}
+
+			{overlayCanvasSpec && (
+				<canvas
+					ref={(element) => {
+						if (element) {
+							overlayCanvasSpec.onMount(element);
+						}
+					}}
+					width={overlayCanvasSpec.width}
+					height={overlayCanvasSpec.height}
+					style={{
+						width: "100cqw",
+						height: "100cqh",
+						objectFit: "cover",
+						objectPosition: "50% 50%",
+					}}
+				/>
+			)}
 
 			{/* 상단 헤더 */}
 			<div className={styles.header}>

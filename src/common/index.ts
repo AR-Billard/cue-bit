@@ -92,7 +92,11 @@ export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function rerange(vector: Vector2, from: number, to: number): Vector2 {
+export function rerange<From extends VectorSpace, To extends VectorSpace>(
+	vector: Vector2<From>,
+	from: number,
+	to: number,
+): Vector2<To> {
 	const scale = to / from;
 	return {
 		x: vector.x * scale,
@@ -121,4 +125,11 @@ export function argmin<T>(array: T[]): number {
 		}
 	}
 	return minIndex;
+}
+
+export function dist<S extends VectorSpace>(
+	a: Vector2<S>,
+	b: Vector2<S>,
+): number {
+	return Math.hypot(a.x - b.x, a.y - b.y);
 }

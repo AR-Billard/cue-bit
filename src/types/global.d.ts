@@ -9,7 +9,7 @@ declare global {
 	};
 
 	type Pass2D = (
-		context: CanvasRenderineContext2D | OffscreenCanvasRenderingContext2D,
+		context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
 		width: number,
 		height: number,
 	) => void;
@@ -42,9 +42,29 @@ declare global {
 		readonly data: ArrayBufferLike;
 	};
 
-	type Vector2 = {
+	/**
+	 * - **frame**: 카메라로 읽은 프레임 좌표계
+	 * - **feed**: ONNX 모델의 입력 좌표계
+	 * - **fetch**: ONNX 모델의 출력 좌표계
+	 * - **physics**: 물리 시뮬레이터 좌표계
+	 * - **unit**: 단위 좌표계
+	 */
+	type VectorSpace =
+		| "frame"
+		| "feed"
+		| "fetch"
+		| "normalized"
+		| "physics"
+		| "unit";
+	type Vector2<S extends VectorSpace> = {
 		readonly x: number;
 		readonly y: number;
+		readonly __space?: S;
+	};
+
+	type BoundingBox<S extends VectorSpace> = {
+		readonly lt: Vector2<S>;
+		readonly rb: Vector2<S>;
 	};
 
 	type BallSnapshot = {
@@ -61,22 +81,22 @@ declare global {
 		readonly objectBalls: BallSnapshot[];
 	};
 
-	type Quad = {
+	type Quad<S extends VectorSpace> = {
 		readonly points: {
-			readonly topLeft: Vector2;
-			readonly bottomLeft: Vector2;
-			readonly bottomRight: Vector2;
-			readonly topRight: Vector2;
+			readonly topLeft: Vector2<S>;
+			readonly bottomLeft: Vector2<S>;
+			readonly bottomRight: Vector2<S>;
+			readonly topRight: Vector2<S>;
 		};
 	};
 
-	type Line = {
-		readonly start: Vector2;
-		readonly end: Vector2;
+	type Line<S extends VectorSpace> = {
+		readonly start: Vector2<S>;
+		readonly end: Vector2<S>;
 	};
 
 	type Cue = {
-		readonly line: Line;
+		readonly line: Line<"normalized">;
 		/**
 		 * radian
 		 */

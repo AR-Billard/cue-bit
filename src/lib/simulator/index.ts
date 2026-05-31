@@ -170,11 +170,11 @@ class Simulator {
 	}
 
 	public simulate(
-		cueBallPosition: Vector2,
-		objectBallPositions: Vector2[],
+		cueBallPosition: Vector2<"physics">,
+		objectBallPositions: Vector2<"physics">[],
 		angle: number,
 		power: number,
-		hitPoint: Vector2,
+		hitPoint: Vector2<"unit">,
 	): [Trajectory, () => Trajectory] {
 		if (objectBallPositions.length > this.objectBalls.length) {
 			logger.warn("Too many balls");
