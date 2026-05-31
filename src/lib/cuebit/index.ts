@@ -217,6 +217,7 @@ function findTableQuad(
 	mask: Float32Array,
 	width: number,
 	height: number,
+	region: { lt: Vector2; rb: Vector2 },
 ): [Vector2, Vector2, Vector2, Vector2] | null {
 	const result = withMatScope((track) => {
 		// Float32 → 0/255 binary Mat
@@ -225,15 +226,27 @@ function findTableQuad(
 			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
 
-		// TODO: roi + 노이즈 제거 해야함
+		// TODO: 노이즈 제거 해야함
+		const roi = track(
+			src.roi(
+				new cv.Rect(
+					region.lt.x,
+					region.lt.y,
+					region.rb.x - region.lt.x,
+					region.rb.y - region.lt.y,
+				),
+			),
+		);
 
 		const contours = track(new cv.MatVector());
-		const hierarchy = track(new cv.Mat());
 		cv.findContours(
-			src,
+			roi,
 			contours,
-			hierarchy,
+			// 현재는 계층 정보가 필요하지 않지만, 인터페이스가 필요로 함
+			track(new cv.Mat()),
+			// 가장 바깥 외곽선만 검출
 			cv.RETR_EXTERNAL,
+			// 직선 구간은 양 끝점만 저장
 			cv.CHAIN_APPROX_SIMPLE,
 		);
 
@@ -261,8 +274,8 @@ function findTableQuad(
 				result = [];
 				for (let i = 0; i < 4; i++) {
 					result.push({
-						x: approx.data32S[i * 2],
-						y: approx.data32S[i * 2 + 1],
+						x: approx.data32S[i * 2] + region.lt.x,
+						y: approx.data32S[i * 2 + 1] + region.lt.y,
 					});
 				}
 			} else {
@@ -271,7 +284,10 @@ function findTableQuad(
 				const rect = cv.minAreaRect(cnt);
 				const box = cv.boxPoints(rect);
 
-				result = box.map((p) => ({ x: p.x, y: p.y }));
+				result = box.map((p) => ({
+					x: p.x + region.lt.x,
+					y: p.y + region.lt.y,
+				}));
 			}
 		}
 
@@ -306,7 +322,23 @@ function findCue(
 		);
 
 		const lines = track(new cv.Mat());
-		cv.HoughLinesP(roi, lines, 1, Math.PI / 180, 4, 10, 5);
+		cv.HoughLinesP(
+			roi,
+			lines,
+			// 거리 해상도 (px 단위)
+			//
+			1,
+			// 각도 해상도 (radian 단위)
+			Math.PI / 180,
+			// 직선으로 인정받기 위한 최소 교차 수
+			// 값이 낮을수록 더 많은 선을 검출함
+			2,
+			// 선분으로 인정할 최소 길이 (px 단위)
+			10,
+			// 선분을 이을 때 허용되는 최대 간격 (px 단위)
+			// 이 값보다 작은 끊김은 하나의 선으로 간주함
+			5,
+		);
 
 		let result: [Vector2, Vector2] | null = null;
 		let lineLength = 0;
@@ -886,15 +918,13 @@ class Cuebit {
 
 		logger.info(
 			table
-				? `인식된 테이블 index: ${table.index}, confidence: ${table.confidence}`
+				? `인식된 테이블 index: ${table.index}, confidence: ${table.confidence}, bbox: (${table.lt.x}, ${table.lt.y}), (${table.rb.x}, ${table.rb.y})`
 				: "테이블 인식 실패",
 		);
-		logger.info(
-			balls.length > 0 ? `공 ${balls.length}개 인식됨` : "공 인식 실패",
-		);
+		logger.info(`인식된 공 ${balls.length}개`);
 		logger.info(
 			cue
-				? `인식된 큐 index: ${cue.index}, confidence: ${cue.confidence}`
+				? `인식된 큐 index: ${cue.index}, confidence: ${cue.confidence}, bbox: (${cue.lt.x}, ${cue.lt.y}), (${cue.rb.x}, ${cue.rb.y})`
 				: "큐 인식 실패",
 		);
 
@@ -951,6 +981,7 @@ class Cuebit {
 			result.table.mask,
 			this.onnx.segementation.output.fetchs.protos.width,
 			this.onnx.segementation.output.fetchs.protos.height,
+			result.table.bbox,
 		);
 
 		if (result.table !== null && quad === null) {
@@ -969,17 +1000,7 @@ class Cuebit {
 			result.cue.mask,
 			this.onnx.segementation.output.fetchs.protos.width,
 			this.onnx.segementation.output.fetchs.protos.height,
-			// NOTE: 나중에 스케일 변환이 필요할수도 있음
-			{
-				lt: {
-					x: result.cue.bbox.lt.x,
-					y: result.cue.bbox.lt.y,
-				},
-				rb: {
-					x: result.cue.bbox.rb.x,
-					y: result.cue.bbox.rb.y,
-				},
-			},
+			result.cue.bbox,
 		);
 
 		if (result.cue.mask !== null && cue === null) {
