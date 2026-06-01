@@ -22,6 +22,7 @@ function useGPUCanvas() {
 						context.configure({
 							device,
 							format: "rgba8unorm",
+                            alphaMode: "premultiplied",
 							usage:
 								GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 						});

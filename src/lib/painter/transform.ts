@@ -131,7 +131,7 @@ export class TextureTransformer implements Disposable {
 				colorAttachments: [
 					{
 						view: context.getCurrentTexture().createView(),
-						clearValue: { r: 0, g: 0, b: 0, a: 1.0 },
+						clearValue: { r: 0, g: 0, b: 0, a: 0.0 },
 						loadOp: "clear",
 						storeOp: "store",
 					},

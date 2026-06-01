@@ -34,7 +34,7 @@ export function drawTrajectory(
 		const initialTrajactory = trajectories[0];
 
 		context.strokeStyle = "rgba(255, 255, 255, 0.8)";
-		context.lineWidth = width * 0.001;
+		context.lineWidth = width * 0.005;
 		context.beginPath();
 		context.moveTo(
 			initialTrajactory.cueBall.position.x * scale,
@@ -51,7 +51,7 @@ export function drawTrajectory(
 
 		for (let i = 0; i < initialTrajactory.objectBalls.length; i++) {
 			context.strokeStyle = `rgba(0, 125, 255, 1)`;
-			context.lineWidth = width * 0.001;
+			context.lineWidth = width * 0.005;
 			context.beginPath();
 			context.moveTo(
 				initialTrajactory.objectBalls[i].position.x * scale,
