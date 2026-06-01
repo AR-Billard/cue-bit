@@ -52,6 +52,7 @@ class Simulator {
 	) {
 		this.config = config;
 		this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+		this.world.lengthUnit = config.ball.radius * 2;
 		this.world.timestep = config.physics.timeStep;
 		this.eventQueue = new RAPIER.EventQueue(true);
 		this.table = [

@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useState,
 } from "react";
+import styles from "./index.module.css";
 
 type HitControlPanelProps = {
 	/**
@@ -19,7 +20,8 @@ type HitControlPanelProps = {
 	 * @returns
 	 */
 	onHitAngleChange?: (angle: number) => void;
-	style: React.CSSProperties;
+	style?: React.CSSProperties;
+	variant?: "default" | "hud";
 };
 
 /**
@@ -32,7 +34,7 @@ function HitControlPanel(props: HitControlPanelProps) {
 	const [hitPower, setHitPower] = useState(0.5);
 	const [hitAngle, setHitAngle] = useState(0);
 
-	const onHitPointChange = useCallback<PointerEventHandler<HTMLDivElement>>(
+	const onHitPointChange = useCallback<PointerEventHandler<HTMLElement>>(
 		(event) => {
 			if (event.buttons === 0) {
 				return;
@@ -80,6 +82,59 @@ function HitControlPanel(props: HitControlPanelProps) {
 		},
 		[props],
 	);
+	const resetHitPoint = useCallback(() => {
+		const center = { x: 0, y: 0 } as const;
+		setHitPoint(center);
+		props.onHitPointChange(center);
+	}, [props]);
+
+	if (props.variant === "hud") {
+		return (
+			<div className={styles.cameraShotPanel} style={props.style}>
+				<label>
+					<span>{`Power ${hitPower.toFixed(2)}`}</span>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.01"
+						value={hitPower}
+						onChange={onHitPowerChange}
+					/>
+				</label>
+				<div className={styles.spinControl}>
+					<span>{`Spin side ${hitPoint.x.toFixed(2)} / top ${hitPoint.y.toFixed(2)}`}</span>
+					<div className={styles.spinPadRow}>
+						<button
+							type="button"
+							className={styles.spinPad}
+							onPointerDown={onHitPointChange}
+							onPointerMove={onHitPointChange}
+							aria-label="Select spin hit point"
+						>
+							<span className={styles.spinGuideCircle} />
+							<span className={styles.spinGuideHorizontal} />
+							<span className={styles.spinGuideVertical} />
+							<span
+								className={styles.spinMarker}
+								style={{
+									left: `${hitPoint.x * 50 + 50}%`,
+									top: `${-hitPoint.y * 50 + 50}%`,
+								}}
+							/>
+						</button>
+						<button
+							type="button"
+							className={styles.spinResetButton}
+							onClick={resetHitPoint}
+						>
+							Center
+						</button>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div style={props.style}>

@@ -4,6 +4,7 @@ import transformShader from "./shaders/transform.wgsl";
 export class TextureTransformer implements Disposable {
 	private sourceTexture: GPUTexture;
 	private matrixBuffer: GPUBuffer;
+	private textureSizesBuffer: GPUBuffer;
 	private pipeline: GPURenderPipeline;
 	private bindGroup: GPUBindGroup;
 
@@ -12,11 +13,12 @@ export class TextureTransformer implements Disposable {
 		sourceWidth: number,
 		sourceHeight: number,
 	) {
-		const { sourceTexture, matrixBuffer, pipeline, bindGroup } =
+		const { sourceTexture, matrixBuffer, textureSizesBuffer, pipeline, bindGroup } =
 			this.createResource(device, sourceWidth, sourceHeight);
 
 		this.sourceTexture = sourceTexture;
 		this.matrixBuffer = matrixBuffer;
+		this.textureSizesBuffer = textureSizesBuffer;
 		this.pipeline = pipeline;
 		this.bindGroup = bindGroup;
 	}
@@ -42,6 +44,11 @@ export class TextureTransformer implements Disposable {
 		const matrixBuffer = device.createBuffer({
 			// 4(float) * 4(3(column) + 1(padding)) * 3(row)
 			size: alignTo16(4 * 4 * 3),
+			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+		});
+
+		const textureSizesBuffer = device.createBuffer({
+			size: alignTo16(4 * 4),
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		});
 
@@ -85,12 +92,17 @@ export class TextureTransformer implements Disposable {
 					binding: 2,
 					resource: sampler,
 				},
+				{
+					binding: 3,
+					resource: { buffer: textureSizesBuffer },
+				},
 			],
 		});
 
 		return {
 			sourceTexture,
 			matrixBuffer,
+			textureSizesBuffer,
 			pipeline,
 			bindGroup,
 		};
@@ -124,14 +136,26 @@ export class TextureTransformer implements Disposable {
 			);
 
 			device.queue.writeBuffer(this.matrixBuffer, 0, packed);
+			const destinationTexture = context.getCurrentTexture();
+
+			device.queue.writeBuffer(
+				this.textureSizesBuffer,
+				0,
+				new Float32Array([
+					source.canvas.width,
+					source.canvas.height,
+					destinationTexture.width,
+					destinationTexture.height,
+				]),
+			);
 
 			const commandEncoder = device.createCommandEncoder();
 
 			const renderPassEncoder = commandEncoder.beginRenderPass({
 				colorAttachments: [
 					{
-						view: context.getCurrentTexture().createView(),
-						clearValue: { r: 0, g: 0, b: 0, a: 1.0 },
+						view: destinationTexture.createView(),
+						clearValue: { r: 0, g: 0, b: 0, a: 0 },
 						loadOp: "clear",
 						storeOp: "store",
 					},
@@ -150,5 +174,6 @@ export class TextureTransformer implements Disposable {
 	[Symbol.dispose]() {
 		this.sourceTexture.destroy();
 		this.matrixBuffer.destroy();
+		this.textureSizesBuffer.destroy();
 	}
 }

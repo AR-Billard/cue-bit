@@ -30,6 +30,10 @@ async function createFrameCapture(
 	// 실제 프레임 크기를 얻기 위해 첫 프레임을 미리 읽음
 	const { value: firstFrame } = await reader.read();
 	if (!firstFrame) {
+		// 사용자가 중간에 종료해서 멈춘 정상 상황. ex) 첫프레임 기다리는 중 사용자가 AR종료
+		if (signal.aborted) {
+			throw new DOMException("Frame capture aborted", "AbortError");
+		}
 		throw new Error("첫 프레임을 읽지 못함");
 	}
 	const width = firstFrame.displayWidth;
@@ -59,8 +63,11 @@ async function createFrameCapture(
 					break;
 				}
 
-				await callback(frame);
-				frame.close();
+				try {
+					await callback(frame);
+				} finally {
+					frame.close();
+				}
 			}
 		},
 	};

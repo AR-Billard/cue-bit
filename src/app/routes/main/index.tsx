@@ -18,7 +18,12 @@ import createFrameCapture from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
-import { drawTexture, drawTrajectory, TextureTransformer } from "@/lib/painter";
+import {
+	drawMinimapTrajectory,
+	drawTexture,
+	drawTrajectory,
+	TextureTransformer,
+} from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
 
@@ -64,16 +69,16 @@ function resolveTableState(
 		const cueTipIndex = argmin(distances);
 		const minDistance = distances[cueTipIndex];
 
+		// 수구 중복 등록을 막기 위해 새 후보를 대입하기 전에 기존 후보를 목적구로 이동
 		if (cueBallCandidate === null || minDistance < cueBallCandidate.distance) {
+			if (cueBallCandidate !== null) {
+				objectBalls.push(cueBallCandidate.point);
+			}
 			cueBallCandidate = { point: ballPoint, distance: minDistance };
 			line = {
 				start: cuePoints[1 - cueTipIndex],
 				end: cuePoints[cueTipIndex],
 			};
-
-			if (cueBallCandidate !== null) {
-				objectBalls.push(cueBallCandidate.point);
-			}
 		} else {
 			objectBalls.push(ballPoint);
 		}
@@ -122,6 +127,7 @@ function Main() {
 	 * overlay 활성화 여부
 	 */
 	const [isOverlayEnabled, setIsOverlayEnabled] = useState(false);
+	const [isControlUiHidden, setIsControlUiHidden] = useState(false);
 
 	const loop = useEffectEvent(
 		async (
@@ -426,6 +432,9 @@ function Main() {
 					}
 
 					drawTrajectory(trajectoryDebugCanvas, trajectories);
+					if (minimapCanvasRef.current) {
+						drawMinimapTrajectory(minimapCanvasRef.current, trajectories);
+					}
 
 					drawTrajectory(trajectoryDrawerCanvas, trajectories);
 					textureTransformer.drawTransformed(
@@ -441,6 +450,12 @@ function Main() {
 	useEffect(() => {
 		// 비동기 작업을 중단하기 위한 AbortController
 		const ac = new AbortController();
+		let stream: MediaStream | null = null;
+		let textureTransformer: TextureTransformer | null = null;
+
+		const stopStream = () => {
+			stream?.getTracks().forEach((track) => track.stop());
+		};
 
 		(async () => {
 			try {
@@ -451,20 +466,23 @@ function Main() {
 					});
 
 				// 카메라 스트림 가져오기
-				const stream = await guard(
-					navigator.mediaDevices.getUserMedia({
-						// 오디오 스트림은 사용하지 않음
-						audio: false,
-						video: {
-							width: 1000,
-							height: 1000,
-							facingMode: {
-								// 후면 카메라 사용
-								ideal: "environment",
-							},
+				const cameraStream = await navigator.mediaDevices.getUserMedia({
+					// 오디오 스트림은 사용하지 않음
+					audio: false,
+					video: {
+						width: 1000,
+						height: 1000,
+						facingMode: {
+							// 후면 카메라 사용
+							ideal: "environment",
 						},
-					}),
-				);
+					},
+				});
+				if (ac.signal.aborted) {
+					cameraStream.getTracks().forEach((track) => track.stop());
+					return;
+				}
+				stream = cameraStream;
 				// 비디오 트랙 가져오기
 				const [track] = stream.getVideoTracks();
 
@@ -586,9 +604,10 @@ function Main() {
 					),
 				);
 
-				const textureTransformer = new TextureTransformer(device, 2844, 1422);
+				const activeTextureTransformer = new TextureTransformer(device, 2844, 1422);
+				textureTransformer = activeTextureTransformer;
 
-				frameCapture.on(async (frame) => {
+				await frameCapture.on(async (frame) => {
 					await loop(
 						frame,
 						cuebit,
@@ -596,7 +615,7 @@ function Main() {
 						cameraCanvas,
 						trajectoryDrawerCanvas,
 						overlayCanvas,
-						textureTransformer,
+						activeTextureTransformer,
 						resizedFrameDebugCanvas,
 						tableMaskDebugCanvas,
 						cueMaskDebugCanvas,
@@ -609,13 +628,17 @@ function Main() {
 				if (error instanceof Error && error.name === "AbortError") {
 					logger.info("Initialization aborted");
 				} else {
-					throw error;
+					logger.error({ err: error }, "Main page initialization or frame loop failed");
 				}
+			} finally {
+				stopStream();
+				textureTransformer?.[Symbol.dispose]();
 			}
 		})();
 
 		return () => {
 			ac.abort();
+			stopStream();
 			clearDebugCanvasSpecs();
 		};
 	}, [
@@ -741,7 +764,9 @@ function Main() {
 					style={{
 						position: "absolute",
 						width: "100cqw",
-						height: "100cwh",
+						height: "100cqh",
+						// AR 궤적용 overlay canvas는 계속 유지하되 AR이 꺼졌을 때 화면에서 숨깁
+						display: isOverlayEnabled ? "block" : "none",
 					}}
 				>
 					<canvas
@@ -779,35 +804,55 @@ function Main() {
 			</div>
 
 			{/* 미니맵 */}
-			<Minimap ref={minimapCanvasRef} visible={isOverlayEnabled} />
-
-			<HitControlPanel
-				style={{
-					position: "absolute",
-					bottom: "20px",
-					left: "20px",
-					backgroundColor: "rgba(255, 255, 255, 0.9)",
-					padding: "12px",
-					borderRadius: "8px",
-					boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
-				}}
-				onHitPointChange={(point) => {
-					hitPointRef.current = point;
-				}}
-				onHitPowerChange={(power) => {
-					hitPowerRef.current = power;
-				}}
-			/>
+			{isOverlayEnabled && !isControlUiHidden && (
+				<Minimap ref={minimapCanvasRef} visible />
+			)}
 
 			{/* 하단 컨트롤 패널 */}
-			<div className={styles.controls}>
-				{/* <DebugViewToggle current={debugView} onChange={setDebugView} /> */}
-				<OverlayToggleButton
-					enabled={isOverlayEnabled}
-					onClick={() => {
-						setIsOverlayEnabled((prev) => !prev);
-					}}
-				/>
+			<div
+				className={`${styles.controls} ${
+					isControlUiHidden ? styles.controlsHidden : ""
+				}`}
+			>
+				<div
+					className={
+						isOverlayEnabled && !isControlUiHidden
+							? ""
+							: styles.controlPanelHidden
+					}
+				>
+					<HitControlPanel
+						variant="hud"
+						onHitPointChange={(point) => {
+							hitPointRef.current = point;
+						}}
+						onHitPowerChange={(power) => {
+							hitPowerRef.current = power;
+						}}
+					/>
+				</div>
+				<div className={styles.actionRow}>
+					{isOverlayEnabled && (
+						<button
+							type="button"
+							className={styles.controlVisibilityButton}
+							onClick={() => setIsControlUiHidden((prev) => !prev)}
+						>
+							{isControlUiHidden ? "UI \ud45c\uc2dc" : "UI \uc228\uae40"}
+						</button>
+					)}
+					{!isControlUiHidden && (
+						<OverlayToggleButton
+							enabled={isOverlayEnabled}
+							onClick={() => {
+								if (isOverlayEnabled) {
+									setIsControlUiHidden(false);
+								}
+								setIsOverlayEnabled((prev) => !prev);
+							}}
+						/>
+					)}
+				</div>
 			</div>
 
 			{/* 개발용 로그 패널 (개발 환경에서만 표시) */}

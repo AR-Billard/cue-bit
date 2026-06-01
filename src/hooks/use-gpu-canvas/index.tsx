@@ -22,6 +22,8 @@ function useGPUCanvas() {
 						context.configure({
 							device,
 							format: "rgba8unorm",
+							// AR 오버레이의 빈 배경을 투명하게 만들기 위한 WebGPU 설정
+							alphaMode: "premultiplied",
 							usage:
 								GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 						});

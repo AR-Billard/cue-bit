@@ -1,15 +1,15 @@
 .container {
 	position: absolute;
-	top: 60px;
-	right: 15px;
-	width: 70px;
-	height: 120px;
-	background-color: rgba(26, 60, 43, 0.85);
-	border: 2px solid #00e5ff;
+	top: 62px;
+	right: 14px;
+	width: 128px;
+	height: 68px;
+	background-color: rgba(13, 43, 36, 0.84);
+	border: 1px solid rgba(0, 229, 255, 0.74);
 	border-radius: 8px;
 	z-index: 20;
-	box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
-	backdrop-filter: blur(5px);
+	box-shadow: 0 0 14px rgba(0, 229, 255, 0.32);
+	backdrop-filter: blur(8px);
 	overflow: hidden;
 	transition: opacity 0.3s;
 }
@@ -26,9 +26,8 @@
 	color: #00e5ff;
 	text-align: center;
 	font-size: 8px;
-	margin: 6px 0;
+	margin: 5px 0;
 	font-weight: bold;
-	letter-spacing: 1px;
 	position: absolute;
 	width: 100%;
 	top: 0;

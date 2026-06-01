@@ -18,7 +18,7 @@ function Minimap({ visible, ref }: MinimapProps) {
 			className={`${styles.container} ${visible ? styles.visible : styles.dim}`}
 		>
 			<p className={styles.label}>MINIMAP</p>
-			<canvas ref={ref} width={70} height={120} className={styles.canvas} />
+			<canvas ref={ref} width={240} height={120} className={styles.canvas} />
 		</div>
 	);
 }
