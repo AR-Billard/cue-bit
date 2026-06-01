@@ -61,7 +61,7 @@ export class TextureTransformer implements Disposable {
 				entryPoint: "fs_main",
 				targets: [
 					{
-						format: navigator.gpu.getPreferredCanvasFormat(),
+						format: "rgba8unorm",
 					},
 				],
 			},

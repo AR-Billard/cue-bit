@@ -7,6 +7,10 @@ struct VertexOutput {
     @location(0) texCoord: vec2<f32>,
 };
 
+// TODO: uniform으로 전달
+const SOURCE_SIZE = vec2<f32>(2844.0, 1422.0); // trajectoryDrawerCanvas
+const DEST_SIZE   = vec2<f32>(1000.0, 1000.0); // overlay (카메라 프레임)
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     // triangle-strip 4개 정점 → source UV의 네 코너
@@ -18,16 +22,19 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     );
     let srcUV = uv[vertexIndex];
 
-    // H * (u, v, 1) → (x', y', w'), x'/w', y'/w' 는 destination UV (0..1)
-    let warped = matrix * vec3<f32>(srcUV, 1.0);
+    // 1) srcUV → canvas 픽셀
+    let canvasPx = srcUV * SOURCE_SIZE;
 
-    // destination UV → NDC. w'를 그대로 살려서 perspective-correct 보간 유도
-    // (GPU가 자동으로 position.xy / position.w 나눔)
-    let x = warped.x * 2.0 - warped.z;
-    let y = -(warped.y * 2.0 - warped.z); // Y flip
+    // 2) canvas 픽셀 → 카메라 픽셀 (동차)
+    let warped = matrix * vec3<f32>(canvasPx, 1.0);
+
+    // 3) 카메라 픽셀(w 보존) → overlay UV → NDC
+    //    perspective-correct 보간을 위해 w로 나누지 않고 position.w에 warped.z를 그대로 둠
+    let ndcX = warped.x / DEST_SIZE.x * 2.0 - warped.z;
+    let ndcY = -(warped.y / DEST_SIZE.y * 2.0 - warped.z); // Y flip
 
     var output: VertexOutput;
-    output.position = vec4<f32>(x, y, 0.0, warped.z);
+    output.position = vec4<f32>(ndcX, ndcY, 0.0, warped.z);
     output.texCoord = srcUV;
 
     return output;
@@ -35,6 +42,6 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // 변환된 좌표에 맞춰 2D Canvas 텍스처에서 픽셀을 샘플링하여 출력 (후처리 완료)
-    return textureSample(source, sourceSampler, in.texCoord);
+    let s = textureSample(source, sourceSampler, in.texCoord);
+    return vec4<f32>(1, 1, 0, 1) + s * 0.0;
 }

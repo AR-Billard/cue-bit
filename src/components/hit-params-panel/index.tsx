@@ -11,7 +11,7 @@ type HitControlPanelProps = {
 	 * @param point [-1, 1] 범위
 	 * @returns
 	 */
-	onHitPointChange: (point: Vector2) => void;
+	onHitPointChange: (point: Vector2<"unit">) => void;
 	onHitPowerChange: (power: number) => void;
 	/**
 	 *
@@ -28,7 +28,7 @@ type HitControlPanelProps = {
  * @returns
  */
 function HitControlPanel(props: HitControlPanelProps) {
-	const [hitPoint, setHitPoint] = useState<Vector2>({ x: 0, y: 0 });
+	const [hitPoint, setHitPoint] = useState<Vector2<"unit">>({ x: 0, y: 0 });
 	const [hitPower, setHitPower] = useState(0.5);
 	const [hitAngle, setHitAngle] = useState(0);
 

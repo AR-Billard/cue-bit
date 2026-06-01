@@ -108,7 +108,7 @@ function Physics() {
 	const [createCanvas, canvasSpec] = usePlanarCanvas();
 	const canvasHandleRef = useRef<CanvasHandle<"2d"> | null>(null);
 
-	const hitPointRef = useRef<Vector2>({ x: 0, y: 0 });
+	const hitPointRef = useRef<Vector2<"unit">>({ x: 0, y: 0 });
 	const hitPowerRef = useRef(0.5);
 	const hitAngleRef = useRef(0);
 

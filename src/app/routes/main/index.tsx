@@ -737,21 +737,29 @@ function Main() {
 			{/* 오버레이 */}
 
 			{overlayCanvasSpec && (
-				<canvas
-					ref={(element) => {
-						if (element) {
-							overlayCanvasSpec.onMount(element);
-						}
-					}}
-					width={overlayCanvasSpec.width}
-					height={overlayCanvasSpec.height}
+				<div
 					style={{
+						position: "absolute",
 						width: "100cqw",
-						height: "100cqh",
-						objectFit: "cover",
-						objectPosition: "50% 50%",
+						height: "100cwh",
 					}}
-				/>
+				>
+					<canvas
+						ref={(element) => {
+							if (element) {
+								overlayCanvasSpec.onMount(element);
+							}
+						}}
+						width={overlayCanvasSpec.width}
+						height={overlayCanvasSpec.height}
+						style={{
+							width: "100cqw",
+							height: "100cqh",
+							objectFit: "cover",
+							objectPosition: "50% 50%",
+						}}
+					/>
+				</div>
 			)}
 
 			{/* 상단 헤더 */}
