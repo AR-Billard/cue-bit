@@ -439,7 +439,9 @@ function Main() {
 		let stream: MediaStream | null = null;
 		const textureTransformer = new TextureTransformer(device, 2844, 1422);
 		const stopStream = () => {
-			stream?.getTracks().forEach((track) => track.stop());
+			stream?.getTracks().forEach((track) => {
+				track.stop();
+			});
 		};
 
 		(async () => {
