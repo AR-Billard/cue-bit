@@ -55,7 +55,7 @@ class WorldRenderer {
 
 		const q = snapshot.rotation;
 		const surfaceR = snapshot.radius * scale;
-		const baseDotR = surfaceR * 0.18;
+		const baseDotR = surfaceR * 0.25;
 
 		for (const [lx, ly, lz, color] of WorldRenderer.FACE_POINTS) {
 			// v' = v + 2 * q.xyz × (q.xyz × v + q.w * v)

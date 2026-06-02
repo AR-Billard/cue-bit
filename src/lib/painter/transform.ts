@@ -109,6 +109,7 @@ export class TextureTransformer implements Disposable {
 				},
 				{
 					texture: this.sourceTexture,
+                    premultipliedAlpha: true,
 				},
 				[source.canvas.width, source.canvas.height],
 			);
