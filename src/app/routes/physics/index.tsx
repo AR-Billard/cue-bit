@@ -79,7 +79,10 @@ class WorldRenderer {
 	}
 
 	public sync(trajectory: Trajectory) {
-		const snapshots: BallSnapshot[] = [trajectory.cueBall, ...trajectory.objectBalls];
+		const snapshots: BallSnapshot[] = [
+			trajectory.cueBall,
+			...trajectory.objectBalls,
+		];
 
 		this.container.removeChildren().forEach((child) => {
 			child.destroy();
@@ -114,9 +117,7 @@ function Physics() {
 
 	const appRef = useRef<Application>(null);
 	const rendererRef = useRef<WorldRenderer>(null);
-	const simulatorRef = useRef<Simulator>(
-		new Simulator(),
-	);
+	const simulatorRef = useRef<Simulator>(new Simulator());
 	const previousTickRef = useRef<() => void>(null);
 
 	const simulate = useCallback(() => {

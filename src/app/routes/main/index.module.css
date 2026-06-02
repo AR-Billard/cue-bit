@@ -77,22 +77,45 @@
 /* 하단 컨트롤 패널 (모드 토글 + AR 버튼) */
 .controls {
 	position: absolute;
-	bottom: 15px;
+	bottom: 14px;
 	left: 50%;
 	transform: translateX(-50%);
 	z-index: 10;
-	width: 60%;
-	max-width: 200px;
-	background-color: rgba(20, 20, 20, 0.65);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	border-radius: 12px;
-	padding: 10px;
-	display: flex;
-	flex-direction: column;
+	box-sizing: border-box;
+	width: min(320px, calc(100vw - 28px));
+	display: grid;
 	gap: 8px;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.controlsHidden {
+	width: min(160px, calc(100vw - 28px));
+}
+
+.controlPanelHidden {
+	display: none;
+}
+
+.actionRow {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.actionRow:has(> :only-child) {
+	grid-template-columns: 1fr;
+}
+
+.controlVisibilityButton {
+	width: 100%;
+	min-height: 38px;
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 8px;
+	background-color: rgba(0, 0, 0, 0.68);
+	color: rgba(255, 255, 255, 0.86);
+	font-size: 12px;
+	font-weight: 800;
+	cursor: pointer;
+	backdrop-filter: blur(12px);
 }
 
 /* OpenCV 로딩 오버레이 */

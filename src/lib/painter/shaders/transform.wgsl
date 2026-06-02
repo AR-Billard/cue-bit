@@ -13,7 +13,6 @@ const DEST_SIZE   = vec2<f32>(160.0, 160.0); // overlay (feed 좌표계)
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    // triangle-strip 4개 정점 → source UV의 네 코너
     var uv = array<vec2<f32>, 4>(
         vec2<f32>(0.0, 0.0),
         vec2<f32>(1.0, 0.0),

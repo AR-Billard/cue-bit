@@ -10,7 +10,6 @@ import {
 	withMatScope,
 } from "@/common";
 import HitControlPanel from "@/components/hit-params-panel";
-import Minimap from "@/components/minimap";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
 import useGPUCanvas from "@/hooks/use-gpu-canvas";
@@ -110,10 +109,6 @@ function Main() {
 		debugCanvasSpecs,
 		clearDebugCanvasSpecs,
 	] = useDebugCanvas();
-	/**
-	 * 미니맵 캔버스
-	 */
-	const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 
 	const hitPointRef = useRef<Vector2<"unit">>({ x: 0, y: 0 });
 	const hitPowerRef = useRef(0.5);
@@ -122,6 +117,7 @@ function Main() {
 	 * overlay 활성화 여부
 	 */
 	const [isOverlayEnabled, setIsOverlayEnabled] = useState(false);
+	const [isControlUiHidden, setIsControlUiHidden] = useState(false);
 
 	const loop = useEffectEvent(
 		async (
@@ -426,7 +422,6 @@ function Main() {
 					}
 
 					drawTrajectory(trajectoryDebugCanvas, trajectories);
-
 					drawTrajectory(trajectoryDrawerCanvas, trajectories);
 					textureTransformer.drawTransformed(
 						trajectoryDrawerCanvas,
@@ -441,6 +436,11 @@ function Main() {
 	useEffect(() => {
 		// 비동기 작업을 중단하기 위한 AbortController
 		const ac = new AbortController();
+		let stream: MediaStream | null = null;
+		const textureTransformer = new TextureTransformer(device, 2844, 1422);
+		const stopStream = () => {
+			stream?.getTracks().forEach((track) => track.stop());
+		};
 
 		(async () => {
 			try {
@@ -451,7 +451,7 @@ function Main() {
 					});
 
 				// 카메라 스트림 가져오기
-				const stream = await guard(
+				stream = await guard(
 					navigator.mediaDevices.getUserMedia({
 						// 오디오 스트림은 사용하지 않음
 						audio: false,
@@ -586,9 +586,7 @@ function Main() {
 					),
 				);
 
-				const textureTransformer = new TextureTransformer(device, 2844, 1422);
-
-				frameCapture.on(async (frame) => {
+				await frameCapture.on(async (frame) => {
 					await loop(
 						frame,
 						cuebit,
@@ -609,13 +607,20 @@ function Main() {
 				if (error instanceof Error && error.name === "AbortError") {
 					logger.info("Initialization aborted");
 				} else {
-					throw error;
+					logger.error(
+						{ err: error },
+						"Main page initialization or frame loop failed",
+					);
 				}
+			} finally {
+				stopStream();
+				textureTransformer[Symbol.dispose]();
 			}
 		})();
 
 		return () => {
 			ac.abort();
+			stopStream();
 			clearDebugCanvasSpecs();
 		};
 	}, [
@@ -665,6 +670,7 @@ function Main() {
 			</div>
 
 			{/* 오버레이 */}
+			{/* NOTE: AR 비활성화 후 디버깅을 위해 꺼도 궤적 남아있도록 한 상태임. 나중에 UX개선을 한다면 isOverlayEnabled 을 조건에 추가해야함 */}
 			{overlayCanvasSpec && (
 				<div
 					style={{
@@ -777,36 +783,56 @@ function Main() {
 				)}
 			</div>
 
-			{/* 미니맵 */}
-			<Minimap ref={minimapCanvasRef} visible={isOverlayEnabled} />
-
-			<HitControlPanel
-				style={{
-					position: "absolute",
-					bottom: "20px",
-					left: "20px",
-					backgroundColor: "rgba(255, 255, 255, 0.9)",
-					padding: "12px",
-					borderRadius: "8px",
-					boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
-				}}
-				onHitPointChange={(point) => {
-					hitPointRef.current = point;
-				}}
-				onHitPowerChange={(power) => {
-					hitPowerRef.current = power;
-				}}
-			/>
-
 			{/* 하단 컨트롤 패널 */}
-			<div className={styles.controls}>
-				{/* <DebugViewToggle current={debugView} onChange={setDebugView} /> */}
-				<OverlayToggleButton
-					enabled={isOverlayEnabled}
-					onClick={() => {
-						setIsOverlayEnabled((prev) => !prev);
-					}}
-				/>
+			<div
+				className={`${styles.controls} ${
+					isControlUiHidden ? styles.controlsHidden : ""
+				}`}
+			>
+				<div
+					className={
+						isOverlayEnabled && !isControlUiHidden
+							? ""
+							: styles.controlPanelHidden
+					}
+				>
+					<HitControlPanel
+						style={{
+							backgroundColor: "rgba(255, 255, 255, 0.9)",
+							padding: "12px",
+							borderRadius: "8px",
+							boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+						}}
+						onHitPointChange={(point) => {
+							hitPointRef.current = point;
+						}}
+						onHitPowerChange={(power) => {
+							hitPowerRef.current = power;
+						}}
+					/>
+				</div>
+				<div className={styles.actionRow}>
+					{isOverlayEnabled && (
+						<button
+							type="button"
+							className={styles.controlVisibilityButton}
+							onClick={() => setIsControlUiHidden((prev) => !prev)}
+						>
+							{isControlUiHidden ? "UI \ud45c\uc2dc" : "UI \uc228\uae40"}
+						</button>
+					)}
+					{!isControlUiHidden && (
+						<OverlayToggleButton
+							enabled={isOverlayEnabled}
+							onClick={() => {
+								if (isOverlayEnabled) {
+									setIsControlUiHidden(false);
+								}
+								setIsOverlayEnabled((prev) => !prev);
+							}}
+						/>
+					)}
+				</div>
 			</div>
 
 			{/* 개발용 로그 패널 (개발 환경에서만 표시) */}
