@@ -1,3 +1,4 @@
+import { vanillaExtractPlugin } from "@vanilla-extract/vite-plugin";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import vitePluginString from "vite-plugin-string";
@@ -59,6 +60,8 @@ export default defineConfig((config) => {
 				include: "**/*.wgsl",
 				compress: false,
 			}),
+            //https://vanilla-extract.style/documentation/integrations/vite/#setup
+            vanillaExtractPlugin(),
 		],
 		server: {
 			// 모든 호스트에서 접근 허용 (외부에서 접속시 필요)

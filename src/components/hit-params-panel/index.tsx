@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useState,
 } from "react";
+import { styles } from "./index.css";
 
 type HitControlPanelProps = {
 	/**
@@ -19,7 +20,6 @@ type HitControlPanelProps = {
 	 * @returns
 	 */
 	onHitAngleChange?: (angle: number) => void;
-	style?: React.CSSProperties;
 };
 
 /**
@@ -86,40 +86,136 @@ function HitControlPanel(props: HitControlPanelProps) {
 	}, [props]);
 
 	return (
-		<div style={props.style}>
+		<div className={styles.root}>
+			<label
+				style={{
+					width: "100%",
+					display: "flex",
+					flexDirection: "column",
+					gap: "8px",
+				}}
+			>
+				<span>{`Power ${hitPower.toFixed(2)}`}</span>
+				<input
+					style={{
+						width: "100%",
+					}}
+					type="range"
+					min="0"
+					max="1"
+					step="0.01"
+					value={hitPower}
+					onChange={onHitPowerChange}
+				/>
+			</label>
+
 			<div
 				style={{
-					widows: "100%",
-					height: "auto",
+					width: "100%",
 					display: "flex",
 					flexDirection: "column",
 					alignItems: "center",
-					gap: "16px",
-					userSelect: "none",
+					gap: "8px",
 				}}
 			>
-				<label
+				<span
 					style={{
 						width: "100%",
+					}}
+				>{`Spin side ${hitPoint.x.toFixed(2)} / top ${hitPoint.y.toFixed(2)}`}</span>
+
+				<div
+					style={{
+						width: "auto",
 						display: "flex",
-						flexDirection: "column",
-						gap: "8px",
+						flexDirection: "row",
+						alignItems: "center",
+						gap: "16px",
 					}}
 				>
-					<span>{`Power ${hitPower.toFixed(2)}`}</span>
-					<input
+					<div
 						style={{
-							width: "100%",
+							width: "96px",
+							height: "auto",
+							aspectRatio: "1 / 1",
+							borderRadius: "50%",
+							background:
+								"radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.95), rgba(230, 238, 242, 0.9) 35%, rgba(165, 181, 190, 0.92) 100%)",
+							boxShadow:
+								"inset -10px -12px 18px rgba(0, 0, 0, 0.2), inset 8px 8px 14px rgba(255, 255, 255, 0.65), 0 0 0 2px rgba(255, 255, 255, 0.18)",
+							position: "relative",
+							touchAction: "none",
 						}}
-						type="range"
-						min="0"
-						max="1"
-						step="0.01"
-						value={hitPower}
-						onChange={onHitPowerChange}
-					/>
-				</label>
+						onPointerDown={onHitPointChange}
+						onPointerMove={onHitPointChange}
+					>
+						<div
+							style={{
+								position: "absolute",
+								width: "64%",
+								height: "60%",
+								top: "50%",
+								left: "50%",
+								transform: "translate(-50%, -50%)",
+								border: "1px dashed rgba(0, 0, 0, 0.28)",
+								borderRadius: "50%",
+							}}
+						/>
+						<div
+							style={{
+								position: "absolute",
+								width: "72%",
+								height: "1px",
+								top: "50%",
+								left: "50%",
+								transform: "translate(-50%, -50%)",
+								border: "1px dashed rgba(0, 0, 0, 0.28)",
+							}}
+						/>
+						<div
+							style={{
+								position: "absolute",
+								width: "1px",
+								height: "72%",
+								top: "50%",
+								left: "50%",
+								transform: "translate(-50%, -50%)",
+								border: "1px dashed rgba(0, 0, 0, 0.28)",
+							}}
+						/>
+						<div
+							style={{
+								position: "absolute",
+								width: "10%",
+								height: "10%",
+								borderRadius: "50%",
+								backgroundColor: "rgba(255, 0, 0, 0.8)",
+								border: "2px solid rgba(255, 255, 255, 1)",
+								top: `${-hitPoint.y * 50 + 50}%`,
+								left: `${hitPoint.x * 50 + 50}%`,
+								transform: "translate(-50%, -50%)",
+							}}
+						/>
+					</div>
 
+					<button
+						style={{
+							width: "auto",
+							height: "auto",
+							padding: "8px 16px",
+							borderRadius: "8px",
+							fontWeight: "800",
+							cursor: "pointer",
+						}}
+						type="button"
+						onClick={resetHitPoint}
+					>
+						Center
+					</button>
+				</div>
+			</div>
+
+			{props.onHitAngleChange && (
 				<div
 					style={{
 						width: "100%",
@@ -133,45 +229,41 @@ function HitControlPanel(props: HitControlPanelProps) {
 						style={{
 							width: "100%",
 						}}
-					>{`Spin side ${hitPoint.x.toFixed(2)} / top ${hitPoint.y.toFixed(2)}`}</span>
+					>{`Angle: ${((hitAngle * 180) / Math.PI).toFixed(2)}`}</span>
 
 					<div
 						style={{
-							width: "auto",
-							display: "flex",
-							flexDirection: "row",
-							alignItems: "center",
-							gap: "16px",
+							width: "60%",
+							height: "auto",
+							aspectRatio: "1 / 1",
+							borderRadius: "50%",
+							position: "relative",
+							touchAction: "none",
 						}}
+						onPointerDown={onHitAngleChange}
+						onPointerMove={onHitAngleChange}
 					>
 						<div
 							style={{
-								width: "96px",
-								height: "auto",
-								aspectRatio: "1 / 1",
+								position: "absolute",
+								width: "80%",
+								height: "80%",
+								top: "50%",
+								left: "50%",
+								transform: "translate(-50%, -50%)",
+								border: "1px dashed rgba(255, 255, 255, 0.56)",
 								borderRadius: "50%",
-								background:
-									"radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.95), rgba(230, 238, 242, 0.9) 35%, rgba(165, 181, 190, 0.92) 100%)",
-								boxShadow:
-									"inset -10px -12px 18px rgba(0, 0, 0, 0.2), inset 8px 8px 14px rgba(255, 255, 255, 0.65), 0 0 0 2px rgba(255, 255, 255, 0.18)",
-								position: "relative",
-								touchAction: "none",
 							}}
-							onPointerDown={onHitPointChange}
-							onPointerMove={onHitPointChange}
+						/>
+
+						<div
+							style={{
+								position: "absolute",
+								width: "100%",
+								height: "100%",
+								rotate: `${-hitAngle}rad`,
+							}}
 						>
-							<div
-								style={{
-									position: "absolute",
-									width: "64%",
-									height: "60%",
-									top: "50%",
-									left: "50%",
-									transform: "translate(-50%, -50%)",
-									border: "1px dashed rgba(0, 0, 0, 0.28)",
-									borderRadius: "50%",
-								}}
-							/>
 							<div
 								style={{
 									position: "absolute",
@@ -180,18 +272,7 @@ function HitControlPanel(props: HitControlPanelProps) {
 									top: "50%",
 									left: "50%",
 									transform: "translate(-50%, -50%)",
-									border: "1px dashed rgba(0, 0, 0, 0.28)",
-								}}
-							/>
-							<div
-								style={{
-									position: "absolute",
-									width: "1px",
-									height: "72%",
-									top: "50%",
-									left: "50%",
-									transform: "translate(-50%, -50%)",
-									border: "1px dashed rgba(0, 0, 0, 0.28)",
+									border: "1px solid rgba(255, 255, 255, 0.56)",
 								}}
 							/>
 							<div
@@ -199,110 +280,17 @@ function HitControlPanel(props: HitControlPanelProps) {
 									position: "absolute",
 									width: "10%",
 									height: "10%",
-									borderRadius: "50%",
-									backgroundColor: "rgba(255, 0, 0, 0.8)",
-									border: "2px solid rgba(255, 255, 255, 1)",
-									top: `${-hitPoint.y * 50 + 50}%`,
-									left: `${hitPoint.x * 50 + 50}%`,
-									transform: "translate(-50%, -50%)",
+									top: "50%",
+									left: "80%",
+									transform: "translate(-50%, -50%) rotate(45deg)",
+									borderTop: "2px solid rgba(255, 255, 255, 0.56)",
+									borderRight: "2px solid rgba(255, 255, 255, 0.56)",
 								}}
 							/>
 						</div>
-
-						<button
-							style={{
-								width: "auto",
-								height: "auto",
-								padding: "8px 16px",
-								borderRadius: "8px",
-								fontWeight: "800",
-								cursor: "pointer",
-							}}
-							type="button"
-							onClick={resetHitPoint}
-						>
-							Center
-						</button>
 					</div>
 				</div>
-
-				{props.onHitAngleChange && (
-					<div
-						style={{
-							width: "100%",
-							display: "flex",
-							flexDirection: "column",
-							alignItems: "center",
-							gap: "8px",
-						}}
-					>
-						<span
-							style={{
-								width: "100%",
-							}}
-						>{`Angle: ${((hitAngle * 180) / Math.PI).toFixed(2)}`}</span>
-
-						<div
-							style={{
-								width: "60%",
-								height: "auto",
-								aspectRatio: "1 / 1",
-								borderRadius: "50%",
-								position: "relative",
-								touchAction: "none",
-							}}
-							onPointerDown={onHitAngleChange}
-							onPointerMove={onHitAngleChange}
-						>
-							<div
-								style={{
-									position: "absolute",
-									width: "80%",
-									height: "80%",
-									top: "50%",
-									left: "50%",
-									transform: "translate(-50%, -50%)",
-									border: "1px dashed rgba(0, 0, 0, 0.28)",
-									borderRadius: "50%",
-								}}
-							/>
-
-							<div
-								style={{
-									position: "absolute",
-									width: "100%",
-									height: "100%",
-									rotate: `${-hitAngle}rad`,
-								}}
-							>
-								<div
-									style={{
-										position: "absolute",
-										width: "72%",
-										height: "1px",
-										top: "50%",
-										left: "50%",
-										transform: "translate(-50%, -50%)",
-										border: "1px solid rgba(0, 0, 0, 0.28)",
-									}}
-								/>
-								<div
-									style={{
-										position: "absolute",
-										width: "10%",
-										height: "10%",
-										top: "50%",
-										left: "80%",
-										transform: "translate(-50%, -50%) rotate(45deg)",
-										borderTop: "2px solid rgba(0, 0, 0, 0.28)",
-										borderRight: "2px solid rgba(0, 0, 0, 0.28)",
-									}}
-								/>
-							</div>
-						</div>
-					</div>
-				)}
-			</div>
+			)}
 		</div>
 	);
 }

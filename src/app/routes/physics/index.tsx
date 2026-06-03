@@ -5,6 +5,7 @@ import usePlanarCanvas from "@/hooks/use-planar-canvas";
 import logger from "@/lib/logger";
 import { drawTrajectory } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
+import { styles } from "./index.css";
 
 const SCALE = 1000;
 const CANVAS_WIDTH = 2844;
@@ -107,8 +108,8 @@ class WorldRenderer {
  * 물리 테스트 페이지.
  */
 function Physics() {
-	const hostRef = useRef<HTMLDivElement>(null);
 	const [createCanvas, canvasSpec] = usePlanarCanvas();
+	const pixiCanvasRef = useRef<HTMLCanvasElement>(null);
 	const canvasHandleRef = useRef<CanvasHandle<"2d"> | null>(null);
 
 	const hitPointRef = useRef<Vector2<"unit">>({ x: 0, y: 0 });
@@ -161,12 +162,12 @@ function Physics() {
 	useEffect(() => {
 		const ac = new AbortController();
 
-		if (!hostRef.current) {
+		if (!pixiCanvasRef.current) {
 			console.error("Host element not found");
 			return;
 		}
 
-		const host = hostRef.current;
+		const pixiCanvas = pixiCanvasRef.current;
 		const app = new Application();
 
 		(async () => {
@@ -178,20 +179,15 @@ function Physics() {
 				await app.init({
 					width: CANVAS_WIDTH,
 					height: CANVAS_HEIGHT,
-					background: new Color([0, 0, 0]),
+					backgroundAlpha: 0,
 					antialias: true,
+					canvas: pixiCanvas,
 				});
 
 				if (ac.signal.aborted) {
 					app.destroy(true, { children: true });
 					return;
 				}
-
-				const pixiCanvas = app.canvas;
-				pixiCanvas.style.width = "100cqw";
-				pixiCanvas.style.height = "auto";
-				pixiCanvas.style.aspectRatio = `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`;
-				host.appendChild(pixiCanvas);
 
 				appRef.current = app;
 				rendererRef.current = new WorldRenderer(app.stage, SCALE);
@@ -237,78 +233,79 @@ function Physics() {
 	}, []);
 
 	return (
-		<div
-			style={{
-				width: "100vw",
-				height: "100vh",
-				containerType: "size",
-				display: "flex",
-				justifyContent: "top",
-				alignItems: "start",
-			}}
-		>
+		<div className={styles.root}>
 			<div
 				style={{
-					position: "relative",
-					width: "100cqw",
+					width: "100%",
 					height: "auto",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
 				}}
 			>
 				<div
-					ref={hostRef}
 					style={{
-						width: "100cqw",
-						height: "auto",
-						display: "flex",
-						justifyContent: "center",
-						alignItems: "center",
+						width: `min(100vw, 100vh * ${CANVAS_WIDTH} / ${CANVAS_HEIGHT})`,
+						aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
+						backgroundColor: "rgba(120, 120, 120, 0.5)",
+                        position: "relative",
 					}}
-				/>
-				{canvasSpec && (
+				>
+					{canvasSpec && (
+						<canvas
+							ref={(element) => {
+								if (element) {
+									canvasSpec.onMount(element);
+								}
+							}}
+							width={canvasSpec.width}
+							height={canvasSpec.height}
+							style={{
+								width: "100%",
+								height: "100%",
+								position: "absolute",
+								top: 0,
+								left: 0,
+							}}
+						/>
+					)}
 					<canvas
-						ref={(element) => {
-							if (element) {
-								canvasSpec.onMount(element);
-							}
-						}}
-						width={canvasSpec.width}
-						height={canvasSpec.height}
+						ref={pixiCanvasRef}
+                        width={CANVAS_WIDTH}
+                        height={CANVAS_HEIGHT}
 						style={{
-							width: "100cqw",
-							height: "auto",
-							aspectRatio: `${canvasSpec.width} / ${canvasSpec.height}`,
+							width: "100%",
+							height: "100%",
 							position: "absolute",
 							top: 0,
 							left: 0,
 						}}
 					/>
-				)}
+				</div>
 			</div>
 
-			<HitControlPanel
+			<div
 				style={{
 					position: "absolute",
 					bottom: "20px",
 					left: "20px",
-					backgroundColor: "rgba(255, 255, 255, 0.9)",
-					padding: "12px",
-					borderRadius: "8px",
-					boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
 				}}
-				onHitPointChange={(point) => {
-					hitPointRef.current = point;
-					refreshCanvas();
-				}}
-				onHitPowerChange={(power) => {
-					hitPowerRef.current = power;
-					refreshCanvas();
-				}}
-				onHitAngleChange={(angle) => {
-					hitAngleRef.current = angle;
-					refreshCanvas();
-				}}
-			/>
-
+			>
+				<HitControlPanel
+					onHitPointChange={(point) => {
+						hitPointRef.current = point;
+						refreshCanvas();
+					}}
+					onHitPowerChange={(power) => {
+						hitPowerRef.current = power;
+						refreshCanvas();
+					}}
+					onHitAngleChange={(angle) => {
+						hitAngleRef.current = angle;
+						refreshCanvas();
+					}}
+				/>
+			</div>
 			<button
 				style={{
 					position: "absolute",
