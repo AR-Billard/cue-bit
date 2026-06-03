@@ -21,6 +21,7 @@ export function drawTrajectory(
 	canvasHandle: CanvasHandle<"2d">,
 	trajectories: Trajectory[],
 	scale: number = 1000,
+	showOutline = false,
 ) {
 	const { draw } = canvasHandle;
 
@@ -32,6 +33,34 @@ export function drawTrajectory(
 		}
 
 		const initialTrajactory = trajectories[0];
+
+		if (showOutline) {
+			context.strokeStyle = "rgba(255, 255, 255, 1)";
+			context.lineWidth = width * 0.003;
+			context.beginPath();
+			context.arc(
+				initialTrajactory.cueBall.position.x * scale,
+				initialTrajactory.cueBall.position.z * scale,
+				(0.0655 / 2) * scale,
+				0,
+				2 * Math.PI,
+			);
+			context.stroke();
+
+			for (const ball of initialTrajactory.objectBalls) {
+				context.strokeStyle = `rgba(0, 125, 255, 1)`;
+				context.lineWidth = width * 0.003;
+				context.beginPath();
+				context.arc(
+					ball.position.x * scale,
+					ball.position.z * scale,
+					(0.0655 / 2) * scale,
+					0,
+					2 * Math.PI,
+				);
+				context.stroke();
+			}
+		}
 
 		context.shadowColor = "rgba(255, 255, 255, 0.5)";
 		context.shadowBlur = width * 0.01;

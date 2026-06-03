@@ -229,7 +229,7 @@ function Physics() {
 			trajectries.push(trajactory);
 		}
 
-		drawTrajectory(canvasHandle, trajectries);
+		drawTrajectory(canvasHandle, trajectries, SCALE, true);
 	}, []);
 
 	return (
@@ -238,9 +238,9 @@ function Physics() {
 				style={{
 					width: "100%",
 					height: "auto",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
+					display: "flex",
+					justifyContent: "center",
+					alignItems: "center",
 				}}
 			>
 				<div
@@ -248,7 +248,7 @@ function Physics() {
 						width: `min(100vw, 100vh * ${CANVAS_WIDTH} / ${CANVAS_HEIGHT})`,
 						aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
 						backgroundColor: "rgba(120, 120, 120, 0.5)",
-                        position: "relative",
+						position: "relative",
 					}}
 				>
 					{canvasSpec && (
@@ -271,8 +271,8 @@ function Physics() {
 					)}
 					<canvas
 						ref={pixiCanvasRef}
-                        width={CANVAS_WIDTH}
-                        height={CANVAS_HEIGHT}
+						width={CANVAS_WIDTH}
+						height={CANVAS_HEIGHT}
 						style={{
 							width: "100%",
 							height: "100%",

@@ -332,55 +332,80 @@ function findCue(
 			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
 
-		const roi = track(
-			src.roi(
-				new cv.Rect(
-					region.lt.x,
-					region.lt.y,
-					region.rb.x - region.lt.x,
-					region.rb.y - region.lt.y,
-				),
-			),
-		);
+		const x0 = Math.max(0, Math.floor(region.lt.x));
+		const y0 = Math.max(0, Math.floor(region.lt.y));
+		const x1 = Math.min(width, Math.ceil(region.rb.x));
+		const y1 = Math.min(height, Math.ceil(region.rb.y));
+		if (x1 <= x0 || y1 <= y0) {
+			return null;
+		}
+		const roi = track(src.roi(new cv.Rect(x0, y0, x1 - x0, y1 - y0)));
 
-		const lines = track(new cv.Mat());
-		cv.HoughLinesP(
+		// 가장 큰 컨투어만 사용 (노이즈 덩어리 제거).
+		// NOTE: 큐는 매우 가는 선이라 morphology open을 적용하면 통째로 지워지므로 쓰지 않음.
+		const contours = track(new cv.MatVector());
+		cv.findContours(
 			roi,
-			lines,
-			// 거리 해상도 (px 단위)
-			//
-			1,
-			// 각도 해상도 (radian 단위)
-			Math.PI / 180,
-			// 직선으로 인정받기 위한 최소 교차 수
-			// 값이 낮을수록 더 많은 선을 검출함
-			2,
-			// 선분으로 인정할 최소 길이 (px 단위)
-			5,
-			// 선분을 이을 때 허용되는 최대 간격 (px 단위)
-			// 이 값보다 작은 끊김은 하나의 선으로 간주함
-			10,
+			contours,
+			track(new cv.Mat()),
+			cv.RETR_EXTERNAL,
+			cv.CHAIN_APPROX_SIMPLE,
 		);
 
-		let result: [Vector2<"fetch">, Vector2<"fetch">] | null = null;
-		let lineLength = 0;
-		for (let i = 0; i < lines.rows; i++) {
-			const line: [Vector2<"fetch">, Vector2<"fetch">] = [
-				{
-					x: lines.data32S[i * 4] + region.lt.x,
-					y: lines.data32S[i * 4 + 1] + region.lt.y,
-				},
-				{
-					x: lines.data32S[i * 4 + 2] + region.lt.x,
-					y: lines.data32S[i * 4 + 3] + region.lt.y,
-				},
-			];
-
-			if (dist(line[0], line[1]) > lineLength) {
-				lineLength = dist(line[0], line[1]);
-				result = line;
+		let maxArea = 0;
+		let maxIdx = -1;
+		for (let i = 0; i < contours.size(); i++) {
+			const area = cv.contourArea(contours.get(i));
+			if (area > maxArea) {
+				maxArea = area;
+				maxIdx = i;
 			}
 		}
+		if (maxIdx < 0) {
+			return null;
+		}
+
+		const contour = contours.get(maxIdx);
+
+		// 큐의 주축(principal axis)을 직접 피팅.
+		// HoughLinesP는 채워진 마스크의 "테두리"를 검출해 중심축에서 벗어나지만,
+		// fitLine은 덩어리 전체에 직선을 피팅하므로 중심축을 곧바로 얻을 수 있음.
+		// DIST_HUBER로 이상치(노이즈 픽셀)에 강건하게 피팅.
+		const lineParams = track(new cv.Mat());
+		cv.fitLine(contour, lineParams, cv.DIST_HUBER, 0, 0.01, 0.01);
+		const vx = lineParams.data32F[0];
+		const vy = lineParams.data32F[1];
+		const px = lineParams.data32F[2];
+		const py = lineParams.data32F[3];
+
+		// 컨투어 점들을 축 방향으로 투영해 양 끝점(투영 최소/최대)을 찾음
+		let minT = Infinity;
+		let maxT = -Infinity;
+		for (let i = 0; i < contour.rows; i++) {
+			const cxi = contour.data32S[i * 2];
+			const cyi = contour.data32S[i * 2 + 1];
+			const t = (cxi - px) * vx + (cyi - py) * vy;
+			if (t < minT) {
+				minT = t;
+			}
+			if (t > maxT) {
+				maxT = t;
+			}
+		}
+		if (!Number.isFinite(minT) || !Number.isFinite(maxT)) {
+			return null;
+		}
+
+		const result: [Vector2<"fetch">, Vector2<"fetch">] = [
+			{
+				x: px + minT * vx + x0,
+				y: py + minT * vy + y0,
+			},
+			{
+				x: px + maxT * vx + x0,
+				y: py + maxT * vy + y0,
+			},
+		];
 
 		return result;
 	});
