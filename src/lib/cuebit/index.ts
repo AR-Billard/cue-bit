@@ -2,7 +2,6 @@ import cv from "@techstark/opencv-js";
 import type { InferenceSession } from "onnxruntime-web";
 import * as ort from "onnxruntime-web/webgpu";
 import { alignTo16, dist, measure, snapshotMat, withMatScope } from "@/common";
-import hyperparams from "@/config/hyperparams";
 import logger from "@/lib/logger";
 import type { ONNX } from "@/lib/onnx";
 import type { FrameInfo } from "../capture";
@@ -200,19 +199,25 @@ function getTransformMatrix<S extends VectorSpace>(quad: Quad<S>) {
 	});
 }
 
+type TableApproximation = {
+	mask: DetectionMask;
+	points:
+		| [Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">]
+		| null;
+	hulls: Vector2<"fetch">[];
+};
+
 function findTableQuad(
-	mask: Float32Array,
+	tableMask: DetectionMask,
 	width: number,
 	height: number,
 	region: BoundingBox<"fetch">,
-):
-	| [Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">]
-	| null {
-	const result = withMatScope((track) => {
+): TableApproximation {
+	return withMatScope((track) => {
 		// Float32 → 0/255 binary Mat
 		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
 		for (let i = 0; i < width * height; i++) {
-			src.data[i] = mask[i] > 0.5 ? 255 : 0;
+			src.data[i] = tableMask.mask[i] > 0.5 ? 255 : 0;
 		}
 		const cx = (region.lt.x + region.rb.x) / 2;
 		const cy = (region.lt.y + region.rb.y) / 2;
@@ -224,17 +229,7 @@ function findTableQuad(
 		const x1 = Math.min(width, Math.ceil(cx + hw));
 		const y1 = Math.min(height, Math.ceil(cy + hh));
 		const roi = track(src.roi(new cv.Rect(x0, y0, x1 - x0, y1 - y0)));
-		// TODO: 노이즈 제거 해야함
-		// const roi = track(
-		// 	src.roi(
-		// 		new cv.Rect(
-		// 			region.lt.x,
-		// 			region.lt.y,
-		// 			region.rb.x - region.lt.x,
-		// 			region.rb.y - region.lt.y,
-		// 		),
-		// 	),
-		// );
+		// TODO: 노이즈 제거
 
 		const contours = track(new cv.MatVector());
 		cv.findContours(
@@ -259,7 +254,11 @@ function findTableQuad(
 			}
 		}
 
-		let result: Vector2<"fetch">[] | null = null;
+		const result: TableApproximation = {
+			mask: tableMask,
+			points: null,
+			hulls: [],
+		};
 		if (maxIdx >= 0) {
 			const countour = contours.get(maxIdx);
 			const hull = track(new cv.Mat());
@@ -273,72 +272,78 @@ function findTableQuad(
 			);
 
 			if (hull.rows >= 4) {
-				let topLeft = { x: 0, y: 0 }; // min(x+y)
-				let bottomRight = { x: 0, y: 0 }; // max(x+y)
-				let topRight = { x: 0, y: 0 }; // max(x-y)
-				let bottomLeft = { x: 0, y: 0 }; // min(x-y)
-
-				let minSum = Infinity;
-				let maxSum = -Infinity;
-				let minDiff = Infinity;
-				let maxDiff = -Infinity;
+				let top: Vector2<"fetch"> = { x: 0, y: -Infinity };
+				let bottom: Vector2<"fetch"> = { x: 0, y: Infinity };
+				let right: Vector2<"fetch"> = { x: -Infinity, y: 0 };
+				let left: Vector2<"fetch"> = { x: Infinity, y: 0 };
 
 				for (let i = 0; i < hull.rows; i++) {
 					const x = hull.data32S[i * 2];
 					const y = hull.data32S[i * 2 + 1];
-					const sum = x + y;
-					const diff = x - y;
 
-					if (sum < minSum) {
-						minSum = sum;
-						topLeft = { x, y };
+					result.hulls.push({ x: x + x0, y: y + y0 });
+
+					if (y > top.y) {
+						top = { x, y };
 					}
-					if (sum > maxSum) {
-						maxSum = sum;
-						bottomRight = { x, y };
+					if (y < bottom.y) {
+						bottom = { x, y };
 					}
-					if (diff > maxDiff) {
-						maxDiff = diff;
-						topRight = { x, y };
+					if (x > right.x) {
+						right = { x, y };
 					}
-					if (diff < minDiff) {
-						minDiff = diff;
-						bottomLeft = { x, y };
+					if (x < left.x) {
+						left = { x, y };
 					}
 				}
-				result = [topLeft, topRight, bottomRight, bottomLeft].map((p) => ({
-					x: p.x + x0,
-					y: p.y + y0,
-				}));
+				result.points = [
+					{
+						x: top.x + x0,
+						y: top.y + y0,
+					},
+					{
+						x: right.x + x0,
+						y: right.y + y0,
+					},
+					{
+						x: bottom.x + x0,
+						y: bottom.y + y0,
+					},
+					{
+						x: left.x + x0,
+						y: left.y + y0,
+					},
+				];
 			}
 		}
 
 		return result;
 	});
-
-	return result && [result[0], result[1], result[2], result[3]];
 }
 
+type CueApproximation = {
+	mask: DetectionMask;
+	endpoints: [Vector2<"fetch">, Vector2<"fetch">] | null;
+};
+
 function findCue(
-	mask: Float32Array,
+	cueMask: DetectionMask,
 	width: number,
 	height: number,
 	region: BoundingBox<"fetch">,
-): [Vector2<"fetch">, Vector2<"fetch">] | null {
+): CueApproximation {
 	return withMatScope((track) => {
 		// Float32 → 0/255 binary Mat
 		const src = track(new cv.Mat(height, width, cv.CV_8UC1));
 		for (let i = 0; i < width * height; i++) {
-			src.data[i] = mask[i] > 0.5 ? 255 : 0;
+			src.data[i] = cueMask.mask[i] > 0.5 ? 255 : 0;
 		}
 
 		const x0 = Math.max(0, Math.floor(region.lt.x));
 		const y0 = Math.max(0, Math.floor(region.lt.y));
 		const x1 = Math.min(width, Math.ceil(region.rb.x));
 		const y1 = Math.min(height, Math.ceil(region.rb.y));
-		if (x1 <= x0 || y1 <= y0) {
-			return null;
-		}
+
 		const roi = track(src.roi(new cv.Rect(x0, y0, x1 - x0, y1 - y0)));
 
 		// 가장 큰 컨투어만 사용 (노이즈 덩어리 제거).
@@ -352,6 +357,11 @@ function findCue(
 			cv.CHAIN_APPROX_SIMPLE,
 		);
 
+		const result: CueApproximation = {
+			mask: cueMask,
+			endpoints: null,
+		};
+
 		let maxArea = 0;
 		let maxIdx = -1;
 		for (let i = 0; i < contours.size(); i++) {
@@ -361,51 +371,47 @@ function findCue(
 				maxIdx = i;
 			}
 		}
-		if (maxIdx < 0) {
-			return null;
-		}
+		if (maxIdx >= 0) {
+			const contour = contours.get(maxIdx);
 
-		const contour = contours.get(maxIdx);
+			// 큐의 주축(principal axis)을 직접 피팅.
+			// HoughLinesP는 채워진 마스크의 "테두리"를 검출해 중심축에서 벗어나지만,
+			// fitLine은 덩어리 전체에 직선을 피팅하므로 중심축을 곧바로 얻을 수 있음.
+			// DIST_HUBER로 이상치(노이즈 픽셀)에 강건하게 피팅.
+			const lineParams = track(new cv.Mat());
+			cv.fitLine(contour, lineParams, cv.DIST_HUBER, 0, 0.01, 0.01);
+			const vx = lineParams.data32F[0];
+			const vy = lineParams.data32F[1];
+			const px = lineParams.data32F[2];
+			const py = lineParams.data32F[3];
 
-		// 큐의 주축(principal axis)을 직접 피팅.
-		// HoughLinesP는 채워진 마스크의 "테두리"를 검출해 중심축에서 벗어나지만,
-		// fitLine은 덩어리 전체에 직선을 피팅하므로 중심축을 곧바로 얻을 수 있음.
-		// DIST_HUBER로 이상치(노이즈 픽셀)에 강건하게 피팅.
-		const lineParams = track(new cv.Mat());
-		cv.fitLine(contour, lineParams, cv.DIST_HUBER, 0, 0.01, 0.01);
-		const vx = lineParams.data32F[0];
-		const vy = lineParams.data32F[1];
-		const px = lineParams.data32F[2];
-		const py = lineParams.data32F[3];
-
-		// 컨투어 점들을 축 방향으로 투영해 양 끝점(투영 최소/최대)을 찾음
-		let minT = Infinity;
-		let maxT = -Infinity;
-		for (let i = 0; i < contour.rows; i++) {
-			const cxi = contour.data32S[i * 2];
-			const cyi = contour.data32S[i * 2 + 1];
-			const t = (cxi - px) * vx + (cyi - py) * vy;
-			if (t < minT) {
-				minT = t;
+			// 컨투어 점들을 축 방향으로 투영해 양 끝점(투영 최소/최대)을 찾음
+			let minT = Infinity;
+			let maxT = -Infinity;
+			for (let i = 0; i < contour.rows; i++) {
+				const cxi = contour.data32S[i * 2];
+				const cyi = contour.data32S[i * 2 + 1];
+				const t = (cxi - px) * vx + (cyi - py) * vy;
+				if (t < minT) {
+					minT = t;
+				}
+				if (t > maxT) {
+					maxT = t;
+				}
 			}
-			if (t > maxT) {
-				maxT = t;
+			if (Number.isFinite(minT) && Number.isFinite(maxT)) {
+				result.endpoints = [
+					{
+						x: px + minT * vx + x0,
+						y: py + minT * vy + y0,
+					},
+					{
+						x: px + maxT * vx + x0,
+						y: py + maxT * vy + y0,
+					},
+				];
 			}
 		}
-		if (!Number.isFinite(minT) || !Number.isFinite(maxT)) {
-			return null;
-		}
-
-		const result: [Vector2<"fetch">, Vector2<"fetch">] = [
-			{
-				x: px + minT * vx + x0,
-				y: py + minT * vy + y0,
-			},
-			{
-				x: px + maxT * vx + x0,
-				y: py + maxT * vy + y0,
-			},
-		];
 
 		return result;
 	});
@@ -1012,8 +1018,8 @@ class Cuebit {
 			this.onnx.segementation.output.fetchs.protos.height /
 			this.onnx.segementation.input.feeds.image.height;
 
-		const quad = findTableQuad(
-			result.tableMask.mask,
+		const approximation = findTableQuad(
+			result.tableMask,
 			this.onnx.segementation.output.fetchs.protos.width,
 			this.onnx.segementation.output.fetchs.protos.height,
 			{
@@ -1028,11 +1034,11 @@ class Cuebit {
 			},
 		);
 
-		if (result.tableMask !== null && quad === null) {
+		if (result.tableMask !== null && approximation === null) {
 			logger.info("table mask로부터 quad 찾기 실패");
 		}
 
-		return quad;
+		return approximation;
 	}
 
 	private getCuePoints(result: Postprocess) {
@@ -1047,8 +1053,8 @@ class Cuebit {
 			this.onnx.segementation.output.fetchs.protos.height /
 			this.onnx.segementation.input.feeds.image.height;
 
-		const cue = findCue(
-			result.cueMask.mask,
+		const approximation = findCue(
+			result.cueMask,
 			this.onnx.segementation.output.fetchs.protos.width,
 			this.onnx.segementation.output.fetchs.protos.height,
 			{
@@ -1063,11 +1069,11 @@ class Cuebit {
 			},
 		);
 
-		if (result.cueMask.mask !== null && cue === null) {
+		if (result.cueMask.mask !== null && approximation === null) {
 			logger.info("cue mask로부터 큐 끝점 찾기 실패");
 		}
 
-		return cue;
+		return approximation;
 	}
 
 	/**
@@ -1105,12 +1111,13 @@ class Cuebit {
 				},
 			);
 
-		const pointsForTable = measure(
+		const tableApproximation = measure(
 			() => postprocessResult && this.getTablePoints(postprocessResult),
 			"테이블처럼 보이는 점 찾기",
 		);
-		const quadForTable = pointsForTable && toQuad(pointsForTable);
-		const pointsForCue = measure(
+		const quadForTable =
+			(tableApproximation?.points && toQuad(tableApproximation.points)) ?? null;
+		const cueApproximation = measure(
 			() => postprocessResult && this.getCuePoints(postprocessResult),
 			"큐처럼 보이는 점 찾기",
 		);
@@ -1148,26 +1155,21 @@ class Cuebit {
 
 		return {
 			// TODO: 리팩토링 필요
-			table: postprocessResult.tableMask
+			table: tableApproximation
 				? transform
 					? {
-							mask: postprocessResult.tableMask,
 							transform,
+							approximation: tableApproximation,
 						}
 					: {
-							mask: postprocessResult.tableMask,
+							approximation: tableApproximation,
 						}
 				: null,
 			ballPoints,
-			cue: postprocessResult.cueMask
-				? pointsForCue
-					? {
-							mask: postprocessResult.cueMask,
-							points: [pointsForCue[0], pointsForCue[1]],
-						}
-					: {
-							mask: postprocessResult.cueMask,
-						}
+			cue: cueApproximation
+				? {
+						approximation: cueApproximation,
+					}
 				: null,
 		} as const;
 	}

@@ -1,3 +1,5 @@
+import hyperparams from "@/config/hyperparams";
+
 export function drawTexture(
 	canvasHandle: CanvasHandle<"webgpu">,
 	texture: GPUTexture,
@@ -41,7 +43,7 @@ export function drawTrajectory(
 			context.arc(
 				initialTrajactory.cueBall.position.x * scale,
 				initialTrajactory.cueBall.position.z * scale,
-				(0.0655 / 2) * scale,
+				hyperparams.ball.radius * scale,
 				0,
 				2 * Math.PI,
 			);
@@ -54,7 +56,7 @@ export function drawTrajectory(
 				context.arc(
 					ball.position.x * scale,
 					ball.position.z * scale,
-					(0.0655 / 2) * scale,
+					hyperparams.ball.radius * scale,
 					0,
 					2 * Math.PI,
 				);

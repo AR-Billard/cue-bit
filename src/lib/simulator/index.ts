@@ -1,4 +1,5 @@
 import RAPIER, { Vector3 } from "@dimforge/rapier3d";
+import hyperparams from "@/config/hyperparams";
 import logger from "@/lib/logger";
 
 type SimulationConfig = {
@@ -40,7 +41,7 @@ class Simulator {
 			},
 			ball: {
 				maxCount: 10,
-				radius: 0.0655 / 2,
+				radius: hyperparams.ball.radius,
 			},
 			physics: {
 				timeStep: 1 / 120,
@@ -221,14 +222,16 @@ class Simulator {
 				radius: this.config.ball.radius,
 				collided: false,
 			},
-			objectBalls: this.objectBalls.map((ball) => ({
-				position: ball.rigidbody.translation(),
-				rotation: ball.rigidbody.rotation(),
-				linvel: ball.rigidbody.linvel(),
-				angvel: ball.rigidbody.angvel(),
-				radius: this.config.ball.radius,
-				collided: false,
-			})),
+			objectBalls: this.objectBalls
+				.slice(0, objectBallPositions.length)
+				.map((ball) => ({
+					position: ball.rigidbody.translation(),
+					rotation: ball.rigidbody.rotation(),
+					linvel: ball.rigidbody.linvel(),
+					angvel: ball.rigidbody.angvel(),
+					radius: this.config.ball.radius,
+					collided: false,
+				})),
 		};
 
 		const ballCenter = this.cueBall.rigidbody.translation();
@@ -279,14 +282,16 @@ class Simulator {
 						radius: this.config.ball.radius,
 						collided: collidedHandles.has(this.cueBall.collider.handle),
 					},
-					objectBalls: this.objectBalls.map((ball) => ({
-						position: ball.rigidbody.translation(),
-						rotation: ball.rigidbody.rotation(),
-						linvel: ball.rigidbody.linvel(),
-						angvel: ball.rigidbody.angvel(),
-						radius: this.config.ball.radius,
-						collided: collidedHandles.has(ball.collider.handle),
-					})),
+					objectBalls: this.objectBalls
+						.slice(0, objectBallPositions.length)
+						.map((ball) => ({
+							position: ball.rigidbody.translation(),
+							rotation: ball.rigidbody.rotation(),
+							linvel: ball.rigidbody.linvel(),
+							angvel: ball.rigidbody.angvel(),
+							radius: this.config.ball.radius,
+							collided: collidedHandles.has(ball.collider.handle),
+						})),
 				};
 			},
 		];

@@ -81,6 +81,13 @@ declare global {
 		readonly objectBalls: BallSnapshot[];
 	};
 
+	type TableApproximation = {
+		points:
+			| [Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">]
+			| null;
+		hulls: Vector2<"fetch">[];
+	};
+
 	type Quad<S extends VectorSpace> = {
 		readonly points: {
 			readonly topLeft: Vector2<S>;

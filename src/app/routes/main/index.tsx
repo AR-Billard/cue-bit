@@ -11,6 +11,7 @@ import {
 } from "@/common";
 import HitControlPanel from "@/components/hit-params-panel";
 import OverlayToggleButton from "@/components/overlay-toggle-button";
+import hyperparams from "@/config/hyperparams";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
 import useGPUCanvas from "@/hooks/use-gpu-canvas";
 import createFrameCapture from "@/lib/capture";
@@ -172,23 +173,32 @@ function Main() {
 
 					context.fillText(
 						"table",
-						((result.table.mask.detection.bbox.lt.x +
-							result.table.mask.detection.bbox.rb.x) /
+						((result.table.approximation.mask.detection.bbox.lt.x +
+							result.table.approximation.mask.detection.bbox.rb.x) /
 							2) *
 							feedToCanvasX,
-						result.table.mask.detection.bbox.lt.y * feedToCanvasY,
+						result.table.approximation.mask.detection.bbox.lt.y * feedToCanvasY,
 					);
 
 					context.rect(
-						result.table.mask.detection.bbox.lt.x * feedToCanvasX,
-						result.table.mask.detection.bbox.lt.y * feedToCanvasY,
-						(result.table.mask.detection.bbox.rb.x -
-							result.table.mask.detection.bbox.lt.x) *
+						result.table.approximation.mask.detection.bbox.lt.x * feedToCanvasX,
+						result.table.approximation.mask.detection.bbox.lt.y * feedToCanvasY,
+						(result.table.approximation.mask.detection.bbox.rb.x -
+							result.table.approximation.mask.detection.bbox.lt.x) *
 							feedToCanvasX,
-						(result.table.mask.detection.bbox.rb.y -
-							result.table.mask.detection.bbox.lt.y) *
+						(result.table.approximation.mask.detection.bbox.rb.y -
+							result.table.approximation.mask.detection.bbox.lt.y) *
 							feedToCanvasY,
 					);
+					context.stroke();
+
+					context.strokeStyle = "cyan";
+					context.lineWidth = width * 0.001;
+					context.beginPath();
+					for (const point of result.table.approximation.hulls) {
+						context.lineTo(point.x * protoToCanvasX, point.y * protoToCanvasY);
+					}
+					context.closePath();
 					context.stroke();
 
 					if (result.table.transform) {
@@ -237,37 +247,37 @@ function Main() {
 
 					context.fillText(
 						"cue",
-						((result.cue.mask.detection.bbox.lt.x +
-							result.cue.mask.detection.bbox.rb.x) /
+						((result.cue.approximation.mask.detection.bbox.lt.x +
+							result.cue.approximation.mask.detection.bbox.rb.x) /
 							2) *
 							feedToCanvasX,
-						result.cue.mask.detection.bbox.lt.y * feedToCanvasY,
+						result.cue.approximation.mask.detection.bbox.lt.y * feedToCanvasY,
 					);
 
 					context.rect(
-						result.cue.mask.detection.bbox.lt.x * feedToCanvasX,
-						result.cue.mask.detection.bbox.lt.y * feedToCanvasY,
-						(result.cue.mask.detection.bbox.rb.x -
-							result.cue.mask.detection.bbox.lt.x) *
+						result.cue.approximation.mask.detection.bbox.lt.x * feedToCanvasX,
+						result.cue.approximation.mask.detection.bbox.lt.y * feedToCanvasY,
+						(result.cue.approximation.mask.detection.bbox.rb.x -
+							result.cue.approximation.mask.detection.bbox.lt.x) *
 							feedToCanvasX,
-						(result.cue.mask.detection.bbox.rb.y -
-							result.cue.mask.detection.bbox.lt.y) *
+						(result.cue.approximation.mask.detection.bbox.rb.y -
+							result.cue.approximation.mask.detection.bbox.lt.y) *
 							feedToCanvasY,
 					);
 					context.stroke();
 
-					if (result.cue.points) {
+					if (result.cue.approximation.endpoints) {
 						context.strokeStyle = "white";
 						context.lineWidth = width * 0.002;
 
 						context.beginPath();
 						context.moveTo(
-							result.cue.points[0].x * protoToCanvasX,
-							result.cue.points[0].y * protoToCanvasY,
+							result.cue.approximation.endpoints[0].x * protoToCanvasX,
+							result.cue.approximation.endpoints[0].y * protoToCanvasY,
 						);
 						context.lineTo(
-							result.cue.points[1].x * protoToCanvasX,
-							result.cue.points[1].y * protoToCanvasY,
+							result.cue.approximation.endpoints[1].x * protoToCanvasX,
+							result.cue.approximation.endpoints[1].y * protoToCanvasY,
 						);
 						context.stroke();
 					}
@@ -290,7 +300,7 @@ function Main() {
 			});
 
 			const tableTransform = result.table?.transform;
-			const cuePoints = result.cue?.points;
+			const cuePoints = result.cue?.approximation?.endpoints;
 			if (tableTransform && cuePoints) {
 				const normalizedBallPoints = withMatScope((track) => {
 					const src = track(
@@ -354,7 +364,7 @@ function Main() {
 					const heightScaleFactor = height / 1422;
 
 					context.clearRect(0, 0, width, height);
-					context.strokeStyle = "blue";
+					context.strokeStyle = "red";
 					context.lineWidth = width * 0.002;
 					context.fillStyle = "red";
 					context.font = `${width * 0.05}px Arial`;
@@ -381,7 +391,7 @@ function Main() {
 						context.arc(
 							point.x * widthScaleFactor,
 							point.y * heightScaleFactor,
-							width * 0.02,
+							hyperparams.ball.radius * widthScaleFactor * 1000,
 							0,
 							2 * Math.PI,
 						);
@@ -416,10 +426,12 @@ function Main() {
 					);
 
 					const trajectories = [initialTrajectory];
-					for (let i = 0; i < 600; i++) {
-						const trajectory = step();
-						trajectories.push(trajectory);
-					}
+					measure(() => {
+						for (let i = 0; i < 600; i++) {
+							const trajectory = step();
+							trajectories.push(trajectory);
+						}
+					}, "Simulate Trajectory");
 
 					drawTrajectory(trajectoryDebugCanvas, trajectories);
 					drawTrajectory(trajectoryDrawerCanvas, trajectories);

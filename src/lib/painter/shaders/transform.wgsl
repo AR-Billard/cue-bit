@@ -38,9 +38,23 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     return output;
 }
 
+const SS_N = 4;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let s = textureSample(source, sourceSampler, in.texCoord);
-    return s;
-    // return vec4<f32>(in.texCoord, 0, 1) + s * 0.0;
+    // let s = textureSample(source, sourceSampler, in.texCoord);
+    // return s;
+
+    let dx = dpdx(in.texCoord);
+    let dy = dpdy(in.texCoord);
+
+    var acc = vec4<f32>(0.0);
+    for (var i = 0; i < SS_N; i = i + 1) {
+        for (var j = 0; j < SS_N; j = j + 1) {
+            let offset = (vec2<f32>(f32(i), f32(j)) + 0.5) / f32(SS_N) - 0.5;
+            let uv = in.texCoord + dx * offset.x + dy * offset.y;
+            acc = acc + textureSample(source, sourceSampler, uv);
+        }
+    }
+    return acc / f32(SS_N * SS_N);
 }
