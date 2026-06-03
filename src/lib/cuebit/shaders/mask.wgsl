@@ -18,13 +18,21 @@ const ROW_STRIDE: u32 = COEFF_OFFSET + NUM_PROTOS; // 4 + 1 + 1 + 32 = 38
 @group(0) @binding(1) var<storage, read> protos: array<f32>;
 // candidate detection index
 @group(0) @binding(2) var<storage, read> candidate: u32;
-// MAX_DETECTIONS * 160 * 160
 @group(0) @binding(3) var<storage, read_write> masks: array<f32>;
 @group(0) @binding(4) var maskTexture: texture_storage_2d<rgba8unorm, write>;
 
 fn sigmoid(x: f32) -> f32 {
     return 1.0 / (1.0 + exp(-x));
 }
+
+fn phi(x: f32) -> f32 {
+    if x < 0.5 {
+        return 0.0;
+    }
+
+    return 1.0;
+}
+
 
 @compute @workgroup_size(16, 16, 1)
 fn createMask(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -47,6 +55,7 @@ fn createMask(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     let maskIndex = pixelOffset;
-    masks[maskIndex] = sigmoid(sum);
-    textureStore(maskTexture, vec2i(i32(x), i32(y)), vec4f(sum, 0.0, 0.0, 1.0));
+    let result = phi(sigmoid(sum));
+    masks[maskIndex] = result;
+    textureStore(maskTexture, vec2i(i32(x), i32(y)), vec4f(result, 0.0, 0.0, 1.0));
 }

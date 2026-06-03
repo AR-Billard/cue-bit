@@ -89,10 +89,12 @@ interface BufferSet {
 	readonly maskFrameTexture: GPUTexture;
 	/**
 	 * 테이블 마스크 이미지를 저장하는 버퍼
+	 * 디버깅용
 	 */
 	readonly tableMaskFrameTexture: GPUTexture;
 	/**
 	 * 큐 마스크 이미지를 저장하는 버퍼
+	 * 디버깅용
 	 */
 	readonly cueMaskFrameTexture: GPUTexture;
 	/**
@@ -584,9 +586,9 @@ class Cuebit {
 				GPUBufferUsage.STORAGE |
 				GPUBufferUsage.COPY_SRC |
 				GPUBufferUsage.COPY_DST,
+			// 4 (float32) byte * width * height
 			size: alignTo16(
 				4 *
-					hyperparams.maxCandidateCount *
 					onnx.segementation.output.fetchs.protos.width *
 					onnx.segementation.output.fetchs.protos.height,
 			),
@@ -794,9 +796,8 @@ class Cuebit {
 				0,
 				buffer.tableMaskReadBuffer,
 				0,
-				// 4 byte * 후보 detection * width * height
+				// 4 byte * width * height
 				4 *
-					hyperparams.maxCandidateCount *
 					this.onnx.segementation.output.fetchs.protos.width *
 					this.onnx.segementation.output.fetchs.protos.height,
 			);
@@ -837,9 +838,8 @@ class Cuebit {
 				0,
 				buffer.cueMaskReadBuffer,
 				0,
-				// 4 byte * 후보 detection * width * height
+				// 4 byte * width * height
 				4 *
-					hyperparams.maxCandidateCount *
 					this.onnx.segementation.output.fetchs.protos.width *
 					this.onnx.segementation.output.fetchs.protos.height,
 			);
