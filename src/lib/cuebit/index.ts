@@ -214,18 +214,27 @@ function findTableQuad(
 		for (let i = 0; i < width * height; i++) {
 			src.data[i] = mask[i] > 0.5 ? 255 : 0;
 		}
+		const cx = (region.lt.x + region.rb.x) / 2;
+		const cy = (region.lt.y + region.rb.y) / 2;
+		const hw = ((region.rb.x - region.lt.x) / 2) * 1.2; // MARGIN ≈ 1.1~1.2
+		const hh = ((region.rb.y - region.lt.y) / 2) * 1.2;
 
+		const x0 = Math.max(0, Math.floor(cx - hw));
+		const y0 = Math.max(0, Math.floor(cy - hh));
+		const x1 = Math.min(width, Math.ceil(cx + hw));
+		const y1 = Math.min(height, Math.ceil(cy + hh));
+		const roi = track(src.roi(new cv.Rect(x0, y0, x1 - x0, y1 - y0)));
 		// TODO: 노이즈 제거 해야함
-		const roi = track(
-			src.roi(
-				new cv.Rect(
-					region.lt.x,
-					region.lt.y,
-					region.rb.x - region.lt.x,
-					region.rb.y - region.lt.y,
-				),
-			),
-		);
+		// const roi = track(
+		// 	src.roi(
+		// 		new cv.Rect(
+		// 			region.lt.x,
+		// 			region.lt.y,
+		// 			region.rb.x - region.lt.x,
+		// 			region.rb.y - region.lt.y,
+		// 		),
+		// 	),
+		// );
 
 		const contours = track(new cv.MatVector());
 		cv.findContours(
@@ -252,30 +261,54 @@ function findTableQuad(
 
 		let result: Vector2<"fetch">[] | null = null;
 		if (maxIdx >= 0) {
-			const cnt = contours.get(maxIdx);
-			const approx = track(new cv.Mat());
-			const peri = cv.arcLength(cnt, true);
-			cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+			const countour = contours.get(maxIdx);
+			const hull = track(new cv.Mat());
+			cv.convexHull(
+				countour,
+				hull,
+				// hull을 시계방향으로 정렬
+				false,
+				// hull의 점이 countour의 점과 1:1 대응되도록 설정
+				true,
+			);
 
-			if (approx.rows === 4) {
-				// 4점이면 그대로 사각형으로 사용
+			if (hull.rows >= 4) {
+				let topLeft = { x: 0, y: 0 }; // min(x+y)
+				let bottomRight = { x: 0, y: 0 }; // max(x+y)
+				let topRight = { x: 0, y: 0 }; // max(x-y)
+				let bottomLeft = { x: 0, y: 0 }; // min(x-y)
 
-				result = [];
-				for (let i = 0; i < 4; i++) {
-					result.push({
-						x: approx.data32S[i * 2] + region.lt.x,
-						y: approx.data32S[i * 2 + 1] + region.lt.y,
-					});
+				let minSum = Infinity;
+				let maxSum = -Infinity;
+				let minDiff = Infinity;
+				let maxDiff = -Infinity;
+
+				for (let i = 0; i < hull.rows; i++) {
+					const x = hull.data32S[i * 2];
+					const y = hull.data32S[i * 2 + 1];
+					const sum = x + y;
+					const diff = x - y;
+
+					if (sum < minSum) {
+						minSum = sum;
+						topLeft = { x, y };
+					}
+					if (sum > maxSum) {
+						maxSum = sum;
+						bottomRight = { x, y };
+					}
+					if (diff > maxDiff) {
+						maxDiff = diff;
+						topRight = { x, y };
+					}
+					if (diff < minDiff) {
+						minDiff = diff;
+						bottomLeft = { x, y };
+					}
 				}
-			} else {
-				// 4점이 아닐 땐 최소 외접 회전 사각형으로 폴백
-
-				const rect = cv.minAreaRect(cnt);
-				const box = cv.boxPoints(rect);
-
-				result = box.map((p) => ({
-					x: p.x + region.lt.x,
-					y: p.y + region.lt.y,
+				result = [topLeft, topRight, bottomRight, bottomLeft].map((p) => ({
+					x: p.x + x0,
+					y: p.y + y0,
 				}));
 			}
 		}
