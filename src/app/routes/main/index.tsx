@@ -529,7 +529,7 @@ function Main() {
 							height: "100cqh",
 							objectFit: "cover",
 							objectPosition: "50% 50%",
-							opacity: 0.2,
+							opacity: 0.5,
 						},
 						"Table Mask",
 					),
