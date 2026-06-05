@@ -14,7 +14,7 @@ import OverlayToggleButton from "@/components/overlay-toggle-button";
 import hyperparams from "@/config/hyperparams";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
 import useGPUCanvas from "@/hooks/use-gpu-canvas";
-import createFrameCapture, { type FrameInfo } from "@/lib/capture";
+import type { FrameInfo } from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
@@ -365,57 +365,89 @@ function Main() {
 					const normalToHeight = height / 1422;
 
 					context.clearRect(0, 0, width, height);
-					context.strokeStyle = "red";
-					context.lineWidth = width * 0.002;
-					context.fillStyle = "red";
-					context.font = `${width * 0.05}px Arial`;
+					context.lineWidth = width * 0.004;
+					context.font = `${width * 0.02}px Arial`;
 					context.textAlign = "center";
 					context.textBaseline = "bottom";
 
-					let i = 0;
-					for (const point of normalizedBallPoints) {
-						if (point === resolvedState?.cueBall) {
-							context.fillText(
-								`c`,
+					if (resolvedState?.objectBalls) {
+						context.strokeStyle = "red";
+						context.fillStyle = "red";
+						for (let i = 0; i < resolvedState.objectBalls.length; i++) {
+							const point = resolvedState.objectBalls[i];
+
+							context.beginPath();
+							context.arc(
 								point.x * normalToWidth,
 								point.y * normalToHeight,
+								hyperparams.ball.radius * normalToWidth * 1000,
+								0,
+								2 * Math.PI,
 							);
-						} else {
+							context.stroke();
+
 							context.fillText(
-								`${i}`,
+								`ball ${i}`,
 								point.x * normalToWidth,
-								point.y * normalToHeight,
+								point.y * normalToHeight -
+									hyperparams.ball.radius * normalToHeight * 1000,
 							);
 						}
+					}
+
+					if (resolvedState?.cue && resolvedState.cueBall) {
+						context.strokeStyle = "white";
+						context.fillStyle = "white";
 
 						context.beginPath();
 						context.arc(
-							point.x * normalToWidth,
-							point.y * normalToHeight,
+							resolvedState.cueBall.x * normalToWidth,
+							resolvedState.cueBall.y * normalToHeight,
 							hyperparams.ball.radius * normalToWidth * 1000,
 							0,
 							2 * Math.PI,
 						);
 						context.stroke();
-						i++;
-					}
 
-					if (resolvedState?.cue && resolvedState.cueBall) {
-						context.strokeStyle = "white";
+						const to: Vector2<"normalized"> = {
+							x:
+								(resolvedState.cueBall.x +
+									hitPowerRef.current *
+										height *
+										Math.cos(resolvedState.cue.angle)) *
+								normalToWidth,
+							y:
+								(resolvedState.cueBall.y +
+									hitPowerRef.current *
+										height *
+										Math.sin(resolvedState.cue.angle)) *
+								normalToHeight,
+						};
+
+						const headLength = width * 0.02;
 						context.lineWidth = width * 0.002;
-
 						context.beginPath();
 						context.moveTo(
 							resolvedState.cueBall.x * normalToWidth,
 							resolvedState.cueBall.y * normalToHeight,
 						);
+						context.lineTo(to.x, to.y);
+						context.stroke();
+
+						context.beginPath();
+						context.moveTo(to.x, to.y);
 						context.lineTo(
-							(resolvedState.cueBall.x +
-								500 * Math.cos(resolvedState.cue.angle)) *
-								normalToWidth,
-							(resolvedState.cueBall.y +
-								500 * Math.sin(resolvedState.cue.angle)) *
-								normalToHeight,
+							to.x -
+								headLength * Math.cos(resolvedState.cue.angle - Math.PI / 6),
+							to.y -
+								headLength * Math.sin(resolvedState.cue.angle - Math.PI / 6),
+						);
+						context.moveTo(to.x, to.y);
+						context.lineTo(
+							to.x -
+								headLength * Math.cos(resolvedState.cue.angle + Math.PI / 6),
+							to.y -
+								headLength * Math.sin(resolvedState.cue.angle + Math.PI / 6),
 						);
 						context.stroke();
 					}
