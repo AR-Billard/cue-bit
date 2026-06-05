@@ -358,8 +358,8 @@ function Main() {
 					resolveTableState(normalizedCuePoints, normalizedBallPoints);
 
 				normalizedTableDebugCanvas.draw((context, width, height) => {
-					const widthScaleFactor = width / 2844;
-					const heightScaleFactor = height / 1422;
+					const normalToWidth = width / 2844;
+					const normalToHeight = height / 1422;
 
 					context.clearRect(0, 0, width, height);
 					context.strokeStyle = "red";
@@ -374,22 +374,22 @@ function Main() {
 						if (point === resolvedState?.cueBall) {
 							context.fillText(
 								`c`,
-								point.x * widthScaleFactor,
-								point.y * heightScaleFactor,
+								point.x * normalToWidth,
+								point.y * normalToHeight,
 							);
 						} else {
 							context.fillText(
 								`${i}`,
-								point.x * widthScaleFactor,
-								point.y * heightScaleFactor,
+								point.x * normalToWidth,
+								point.y * normalToHeight,
 							);
 						}
 
 						context.beginPath();
 						context.arc(
-							point.x * widthScaleFactor,
-							point.y * heightScaleFactor,
-							hyperparams.ball.radius * widthScaleFactor * 1000,
+							point.x * normalToWidth,
+							point.y * normalToHeight,
+							hyperparams.ball.radius * normalToWidth * 1000,
 							0,
 							2 * Math.PI,
 						);
@@ -397,18 +397,22 @@ function Main() {
 						i++;
 					}
 
-					if (normalizedCuePoints) {
+					if (resolvedState?.cue && resolvedState.cueBall) {
 						context.strokeStyle = "white";
 						context.lineWidth = width * 0.002;
 
 						context.beginPath();
 						context.moveTo(
-							normalizedCuePoints[0].x * widthScaleFactor,
-							normalizedCuePoints[0].y * heightScaleFactor,
+							resolvedState.cueBall.x * normalToWidth,
+							resolvedState.cueBall.y * normalToHeight,
 						);
 						context.lineTo(
-							normalizedCuePoints[1].x * widthScaleFactor,
-							normalizedCuePoints[1].y * heightScaleFactor,
+							(resolvedState.cueBall.x +
+								500 * Math.cos(resolvedState.cue.angle)) *
+								normalToWidth,
+							(resolvedState.cueBall.y +
+								500 * Math.sin(resolvedState.cue.angle)) *
+								normalToHeight,
 						);
 						context.stroke();
 					}

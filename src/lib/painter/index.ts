@@ -64,10 +64,11 @@ export function drawTrajectory(
 			}
 		}
 
-		context.shadowColor = "rgba(255, 255, 255, 0.8)";
-		context.shadowBlur = width * 0.01;
-		context.strokeStyle = "rgba(255, 255, 255, 1)";
+		context.lineJoin = "round";
 		context.lineWidth = width * 0.006;
+		context.shadowBlur = width * 0.01;
+		context.shadowColor = "rgba(255, 255, 255, 0.8)";
+		context.strokeStyle = "rgba(255, 255, 255, 1)";
 		context.beginPath();
 		context.moveTo(
 			initialTrajactory.cueBall.position.x * scale,
@@ -82,9 +83,9 @@ export function drawTrajectory(
 		}
 		context.stroke();
 
+		context.shadowColor = "rgba(0, 125, 255, 0.8)";
+		context.strokeStyle = `rgba(0, 125, 255, 1)`;
 		for (let i = 0; i < initialTrajactory.objectBalls.length; i++) {
-			context.strokeStyle = `rgba(0, 125, 255, 1)`;
-			context.lineWidth = width * 0.006;
 			context.beginPath();
 			context.moveTo(
 				initialTrajactory.objectBalls[i].position.x * scale,
