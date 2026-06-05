@@ -14,7 +14,7 @@ import OverlayToggleButton from "@/components/overlay-toggle-button";
 import hyperparams from "@/config/hyperparams";
 import useDebugCanvas from "@/hooks/use-debug-canvas";
 import useGPUCanvas from "@/hooks/use-gpu-canvas";
-import createFrameCapture from "@/lib/capture";
+import createFrameCapture, { type FrameInfo } from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
@@ -94,9 +94,9 @@ function resolveTableState(
  */
 function Main() {
 	/**
-	 * 카메라 프레임 표시하는 Canvas
+	 * 카메라 프레임 표시하는 video
 	 */
-	const [createCameraCanvas, cameraCanvasSpec] = useGPUCanvas();
+	const cameraVideoRef = useRef<HTMLVideoElement>(null);
 	/**
 	 * 오버레이 Canvas
 	 */
@@ -122,10 +122,9 @@ function Main() {
 
 	const loop = useEffectEvent(
 		async (
-			frame: VideoFrame,
+			source: HTMLVideoElement,
 			cuebit: Cuebit,
 			simulator: Simulator,
-			cameraCanvas: CanvasHandle<"webgpu">,
 			trajectoryDrawerCanvas: CanvasHandle<"2d">,
 			overlayCanvas: CanvasHandle<"webgpu">,
 			textureTransformer: TextureTransformer,
@@ -141,14 +140,13 @@ function Main() {
 			}
 
 			const result = await measure(
-				() => cuebit.process(frame),
+				() => cuebit.process(source),
 				"Process Frame",
 			);
 
 			const bufferIndex = cuebit.getCurrentBufferIndex();
 			const buffer = cuebit.getBuffer(bufferIndex);
 
-			drawTexture(cameraCanvas, buffer.frameTexture);
 			drawTexture(resizedFrameDebugCanvas, buffer.resizedFrameTexture);
 			drawTexture(tableMaskDebugCanvas, buffer.tableMaskFrameTexture);
 			drawTexture(cueMaskDebugCanvas, buffer.cueMaskFrameTexture);
@@ -446,6 +444,11 @@ function Main() {
 	);
 
 	useEffect(() => {
+		if (!cameraVideoRef.current) {
+			return;
+		}
+		const video = cameraVideoRef.current;
+
 		// 비동기 작업을 중단하기 위한 AbortController
 		const ac = new AbortController();
 		let stream: MediaStream | null = null;
@@ -479,40 +482,37 @@ function Main() {
 						},
 					}),
 				);
-				// 비디오 트랙 가져오기
-				const [track] = stream.getVideoTracks();
 
-				// 프레임 캡처 유틸 생성
-				const frameCapture = await guard(
-					createFrameCapture(
-						// cleanup 시 프레임 캡처 중단을 위해 signal 전달
-						ac.signal,
-						track,
-					),
+				video.srcObject = stream;
+				await video.play();
+				const frameInfo = await guard(
+					new Promise<FrameInfo>((resolve) => {
+						if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+							resolve({ width: video.videoWidth, height: video.videoHeight });
+						} else {
+							video.addEventListener(
+								"loadedmetadata",
+								() =>
+									resolve({
+										width: video.videoWidth,
+										height: video.videoHeight,
+									}),
+								{ once: true },
+							);
+						}
+					}),
 				);
 				logger.info(
-					`Frame capture created. width: ${frameCapture.frameInfo.width}, height: ${frameCapture.frameInfo.height}`,
-				);
-
-				const cameraCanvas = await guard(
-					createCameraCanvas(
-						device,
-						frameCapture.frameInfo.width,
-						frameCapture.frameInfo.height,
-					),
+					`Camera stream started with resolution ${frameInfo.width}x${frameInfo.height}`,
 				);
 
 				const trajectoryDrawerCanvas = createOffscreenCanvasHandle(2844, 1422);
 
 				const overlayCanvas = await guard(
-					createOverlayCanvas(
-						device,
-						frameCapture.frameInfo.width,
-						frameCapture.frameInfo.height,
-					),
+					createOverlayCanvas(device, frameInfo.width, frameInfo.height),
 				);
 
-				const cuebit = new Cuebit(device, onnx, frameCapture.frameInfo);
+				const cuebit = new Cuebit(device, onnx, frameInfo);
 				logger.info("Cuebit instance created");
 
 				const simulator = new Simulator();
@@ -563,8 +563,8 @@ function Main() {
 				);
 				const detectionDebugCanvas = await guard(
 					createDebug2DCanvas(
-						frameCapture.frameInfo.width,
-						frameCapture.frameInfo.height,
+						frameInfo.width,
+						frameInfo.height,
 						{
 							width: "100cqw",
 							height: "100cqh",
@@ -600,23 +600,31 @@ function Main() {
 					),
 				);
 
-				await frameCapture.on(async (frame) => {
-					await loop(
-						frame,
-						cuebit,
-						simulator,
-						cameraCanvas,
-						trajectoryDrawerCanvas,
-						overlayCanvas,
-						textureTransformer,
-						resizedFrameDebugCanvas,
-						tableMaskDebugCanvas,
-						cueMaskDebugCanvas,
-						detectionDebugCanvas,
-						normalizedTableDebugCanvas,
-						trajectoryDebugCanvas,
-					);
-				});
+				let busy = false;
+				const tick = () => {
+					if (ac.signal.aborted) return;
+					if (!busy) {
+						busy = true;
+						loop(
+							video,
+							cuebit,
+							simulator,
+							trajectoryDrawerCanvas,
+							overlayCanvas,
+							textureTransformer,
+							resizedFrameDebugCanvas,
+							tableMaskDebugCanvas,
+							cueMaskDebugCanvas,
+							detectionDebugCanvas,
+							normalizedTableDebugCanvas,
+							trajectoryDebugCanvas,
+						).finally(() => {
+							busy = false;
+						});
+					}
+					video.requestVideoFrameCallback(tick);
+				};
+				video.requestVideoFrameCallback(tick);
 			} catch (error) {
 				if (error instanceof Error && error.name === "AbortError") {
 					logger.info("Initialization aborted");
@@ -627,18 +635,16 @@ function Main() {
 					);
 				}
 			} finally {
-				stopStream();
-				textureTransformer[Symbol.dispose]();
 			}
 		})();
 
 		return () => {
 			ac.abort();
 			stopStream();
+			textureTransformer[Symbol.dispose]();
 			clearDebugCanvasSpecs();
 		};
 	}, [
-		createCameraCanvas,
 		createOverlayCanvas,
 		createDebug2DCanvas,
 		createDebugGPUCanvas,
@@ -662,25 +668,18 @@ function Main() {
 					height: "100cwh",
 				}}
 			>
-				{cameraCanvasSpec === null ? (
-					<span>canvas 로딩중</span>
-				) : (
-					<canvas
-						ref={(element) => {
-							if (element) {
-								cameraCanvasSpec.onMount(element);
-							}
-						}}
-						width={cameraCanvasSpec.width}
-						height={cameraCanvasSpec.height}
-						style={{
-							width: "100cqw",
-							height: "100cqh",
-							objectFit: "cover",
-							objectPosition: "50% 50%",
-						}}
-					/>
-				)}
+				<video
+					ref={cameraVideoRef}
+					playsInline
+					muted
+					autoPlay
+					style={{
+						width: "100cqw",
+						height: "100cqh",
+						objectFit: "cover",
+						objectPosition: "50% 50%",
+					}}
+				/>
 			</div>
 
 			{/* 오버레이 */}

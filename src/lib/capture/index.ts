@@ -24,6 +24,7 @@ async function createFrameCapture(
 ): Promise<FrameCapture> {
 	const processor = new MediaStreamTrackProcessor({
 		track,
+		maxBufferSize: 1,
 	});
 	const reader = processor.readable.getReader();
 

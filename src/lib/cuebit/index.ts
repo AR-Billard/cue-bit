@@ -759,9 +759,9 @@ class Cuebit {
 	/**
 	 * 프레임 전처리
 	 */
-	private preprocessFrame(frame: VideoFrame, buffer: BufferSet): void {
+	private preprocessFrame(source: HTMLVideoElement, buffer: BufferSet): void {
 		// 프레임을 텍스처로 복사
-		this.copyFrameToTexture(frame, buffer);
+		this.copyFrameToTexture(source, buffer);
 
 		// 프레임 전처리
 		const commandEncoder = this.device.createCommandEncoder();
@@ -770,11 +770,14 @@ class Cuebit {
 		this.device.queue.submit([commandEncoder.finish()]);
 	}
 
-	private copyFrameToTexture(frame: VideoFrame, buffer: BufferSet): void {
+	private copyFrameToTexture(
+		source: HTMLVideoElement,
+		buffer: BufferSet,
+	): void {
 		// NOTE: importExternalTexture 고려
 		this.device.queue.copyExternalImageToTexture(
 			{
-				source: frame,
+				source,
 			},
 			{
 				texture: buffer.frameTexture,
@@ -1079,7 +1082,7 @@ class Cuebit {
 	/**
 	 *
 	 */
-	public async process(frame: VideoFrame) {
+	public async process(source: HTMLVideoElement) {
 		// 이전 버퍼 인덱스 계산
 		const previousBufferIndex = 1 - this.currentBufferIndex;
 
@@ -1089,7 +1092,7 @@ class Cuebit {
 			this.buffers[previousBufferIndex],
 		];
 
-		this.preprocessFrame(frame, currentBuffer);
+		this.preprocessFrame(source, currentBuffer);
 
 		const postprocessResult = await measure(
 			() => this.postprocess(previousBuffer),
