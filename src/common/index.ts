@@ -115,6 +115,89 @@ export function exportMatToPNG(mat: cv.Mat, fileName = "output.png") {
 	link.click();
 }
 
+export async function exportCanvasToPNG(
+	canvas: HTMLCanvasElement | OffscreenCanvas,
+	fileName = "output.png",
+) {
+	const link = document.createElement("a");
+	link.href =
+		canvas instanceof HTMLCanvasElement
+			? canvas.toDataURL("image/png")
+			: URL.createObjectURL(await canvas.convertToBlob());
+	link.download = fileName;
+	link.click();
+}
+
+export async function exportGPUTextureToPNG(
+	device: GPUDevice,
+	texture: GPUTexture,
+	fileName = "output.png",
+) {
+	// rgba8
+	const bytesPerPixel = 4;
+	const unalignedBytesPerRow = texture.width * bytesPerPixel;
+	// 256바이트 정렬
+	const bytesPerRow = Math.ceil(unalignedBytesPerRow / 256) * 256;
+	const bufferSize = bytesPerRow * texture.height;
+
+	// 데이터를 복사받을 CPU 맵핑용 버퍼
+	const outputBuffer = device.createBuffer({
+		size: bufferSize,
+		usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+	});
+
+	const commandEncoder = device.createCommandEncoder();
+	commandEncoder.copyTextureToBuffer(
+		{
+			texture,
+		},
+		{
+			buffer: outputBuffer,
+			bytesPerRow,
+			rowsPerImage: texture.height,
+		},
+		{
+			width: texture.width,
+			height: texture.height,
+			depthOrArrayLayers: 1,
+		},
+	);
+	device.queue.submit([commandEncoder.finish()]);
+
+	// GPU 작업 완료 대기 및 버퍼 맵핑
+	await outputBuffer.mapAsync(GPUMapMode.READ);
+	const arrayBuffer = outputBuffer.getMappedRange();
+	const rawData = new Uint8Array(arrayBuffer);
+
+	// Canvas 생성 및 패딩 제거 후 데이터 복사
+	const canvas = document.createElement("canvas");
+	canvas.width = texture.width;
+	canvas.height = texture.height;
+	const context = canvas.getContext("2d") ?? todo("2d context not supported");
+	const imageData = context.createImageData(texture.width, texture.height);
+
+	// 패딩 제거
+	for (let y = 0; y < texture.height; y++) {
+		const srcOffset = y * bytesPerRow;
+		const destOffset = y * texture.width * bytesPerPixel;
+		imageData.data.set(
+			rawData.subarray(srcOffset, srcOffset + unalignedBytesPerRow),
+			destOffset,
+		);
+	}
+	context.putImageData(imageData, 0, 0);
+
+	// 사용한 버퍼 언맵핑 (메모리 해제)
+	outputBuffer.unmap();
+	outputBuffer.destroy();
+
+	const dataURL = canvas.toDataURL("image/png");
+	const link = document.createElement("a");
+	link.download = fileName;
+	link.href = dataURL;
+	link.click();
+}
+
 export function argmin<T>(array: T[]): number {
 	let minIndex = 0;
 	let minValue = array[0];
