@@ -65,15 +65,18 @@ function resolveTableState(
 		const minDistance = distances[cueTipIndex];
 
 		if (cueBallCandidate === null || minDistance < cueBallCandidate.distance) {
-			cueBallCandidate = { point: ballPoint, distance: minDistance };
+			if (cueBallCandidate !== null) {
+				objectBalls.push(cueBallCandidate.point);
+			}
+
+			cueBallCandidate = {
+				point: ballPoint,
+				distance: minDistance,
+			};
 			line = {
 				start: cuePoints[1 - cueTipIndex],
 				end: cuePoints[cueTipIndex],
 			};
-
-			if (cueBallCandidate !== null) {
-				objectBalls.push(cueBallCandidate.point);
-			}
 		} else {
 			objectBalls.push(ballPoint);
 		}
