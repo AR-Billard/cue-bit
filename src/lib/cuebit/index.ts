@@ -107,14 +107,14 @@ interface BufferSet {
 }
 
 type DetectionMask = {
-	detection: Detection;
-	mask: Float32Array;
+	readonly detection: Detection;
+	readonly mask: Float32Array;
 };
 
 type Postprocess = {
-	tableMask: DetectionMask | null;
-	balls: Vector2<"feed">[];
-	cueMask: DetectionMask | null;
+	readonly tableMask: DetectionMask | null;
+	readonly balls: Vector2<"feed">[];
+	readonly cueMask: DetectionMask | null;
 };
 
 function toQuad<S extends VectorSpace>(
@@ -200,11 +200,11 @@ function getTransformMatrix<S extends VectorSpace>(quad: Quad<S>) {
 }
 
 type TableApproximation = {
-	mask: DetectionMask;
-	points:
+	readonly mask: DetectionMask;
+	readonly points:
 		| [Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">]
 		| null;
-	hulls: Vector2<"fetch">[];
+	readonly hulls: Vector2<"fetch">[];
 };
 
 function findTableQuad(
@@ -254,11 +254,10 @@ function findTableQuad(
 			}
 		}
 
-		const result: TableApproximation = {
-			mask: tableMask,
-			points: null,
-			hulls: [],
-		};
+		let points:
+			| [Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">, Vector2<"fetch">]
+			| null = null;
+		const hulls: Vector2<"fetch">[] = [];
 		if (maxIdx >= 0) {
 			const countour = contours.get(maxIdx);
 			const hull = track(new cv.Mat());
@@ -281,7 +280,7 @@ function findTableQuad(
 					const x = hull.data32S[i * 2];
 					const y = hull.data32S[i * 2 + 1];
 
-					result.hulls.push({ x: x + x0, y: y + y0 });
+					hulls.push({ x: x + x0, y: y + y0 });
 
 					if (y > top.y) {
 						top = { x, y };
@@ -296,7 +295,7 @@ function findTableQuad(
 						left = { x, y };
 					}
 				}
-				result.points = [
+				points = [
 					{
 						x: top.x + x0,
 						y: top.y + y0,
@@ -317,7 +316,11 @@ function findTableQuad(
 			}
 		}
 
-		return result;
+		return {
+			mask: tableMask,
+			points,
+			hulls,
+		};
 	});
 }
 
@@ -459,12 +462,12 @@ function toDetections(detection: Float32Array, chunkSize: number): Detection[] {
  * 전체 파이프라인 실행 클래스
  */
 class Cuebit {
-	private device: GPUDevice;
-	private onnx: ONNX;
-	private frameInfo: FrameInfo;
-	private preprocessShaderModule: GPUShaderModule;
-	private maskShaderModule: GPUShaderModule;
-	private buffers: [BufferSet, BufferSet];
+	private readonly device: GPUDevice;
+	private readonly onnx: ONNX;
+	private readonly frameInfo: FrameInfo;
+	private readonly preprocessShaderModule: GPUShaderModule;
+	private readonly maskShaderModule: GPUShaderModule;
+	private readonly buffers: [BufferSet, BufferSet];
 	private currentBufferIndex: BufferIndex = 0;
 
 	constructor(device: GPUDevice, onnx: ONNX, frameInfo: FrameInfo) {
