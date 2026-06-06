@@ -1,4 +1,5 @@
 import RAPIER, { Vector3 } from "@dimforge/rapier3d";
+import { RawIntegrationParameters } from "@dimforge/rapier3d/rapier_wasm3d";
 import hyperparams from "@/config/hyperparams";
 import logger from "@/lib/logger";
 
@@ -44,7 +45,7 @@ class Simulator {
 				radius: hyperparams.ball.radius,
 			},
 			physics: {
-				timeStep: 1 / 120,
+				timeStep: 1 / 240,
 				slidingFriction: 0.2,
 				rollingFriction: 0.01,
 				spinningFriction: 0.04,
@@ -52,9 +53,13 @@ class Simulator {
 		},
 	) {
 		this.config = config;
-		this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-		this.world.lengthUnit = config.ball.radius * 0.1;
-		this.world.timestep = config.physics.timeStep;
+		const integrationParameters = new RawIntegrationParameters();
+		integrationParameters.dt = config.physics.timeStep;
+        integrationParameters.numSolverIterations = 64;
+		this.world = new RAPIER.World(
+			{ x: 0, y: -9.81, z: 0 },
+			integrationParameters,
+		);
 		this.eventQueue = new RAPIER.EventQueue(true);
 		this.table = [
 			// ground
@@ -111,8 +116,8 @@ class Simulator {
 		const rigidbody = this.world.createRigidBody(
 			RAPIER.RigidBodyDesc.dynamic()
 				.setCcdEnabled(true)
-				.setLinearDamping(0)
-				.setAngularDamping(0)
+				.setLinearDamping(0.2)
+				.setAngularDamping(0.2)
 				.setTranslation(0, 0, 0)
 				.setCanSleep(false),
 		);
@@ -250,7 +255,7 @@ class Simulator {
 			ballCenter.z + perpZ * this.config.ball.radius * hitPoint.x,
 		);
 
-		logger.info(
+		logger.debug(
 			`hitPoint: (${hitPoint.x.toFixed(2)}, ${hitPoint.y.toFixed(2)}), contactPoint: (${contactPoint.x.toFixed(2)}, ${contactPoint.y.toFixed(2)}, ${contactPoint.z.toFixed(2)})`,
 		);
 		this.cueBall.rigidbody.applyImpulseAtPoint(
@@ -262,8 +267,8 @@ class Simulator {
 		return [
 			initialSnapshot,
 			() => {
-				this.applyRollingResistance(this.cueBall);
-				this.objectBalls.forEach(this.applyRollingResistance.bind(this));
+				// this.applyRollingResistance(this.cueBall);
+				// this.objectBalls.forEach(this.applyRollingResistance.bind(this));
 				this.world.step(this.eventQueue);
 
 				const collidedHandles = new Set<number>();

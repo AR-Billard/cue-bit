@@ -1,6 +1,12 @@
 import { Application, Color, Container, Graphics } from "pixi.js";
-import { useCallback, useEffect, useRef } from "react";
+import {
+	type PointerEventHandler,
+	useCallback,
+	useEffect,
+	useRef,
+} from "react";
 import HitControlPanel from "@/components/hit-params-panel";
+import hyperparams from "@/config/hyperparams";
 import usePlanarCanvas from "@/hooks/use-planar-canvas";
 import logger from "@/lib/logger";
 import { TrajectoryPainter } from "@/lib/painter";
@@ -112,6 +118,8 @@ function Physics() {
 	const pixiCanvasRef = useRef<HTMLCanvasElement>(null);
 	const canvasHandleRef = useRef<CanvasHandle<"2d"> | null>(null);
 
+	const cueBallPos = useRef<Vector2<"physics">>({ x: 1.422, y: 0.711 });
+	const objectBallPositions = useRef<Vector2<"physics">[]>([]);
 	const hitPointRef = useRef<Vector2<"unit">>({ x: 0, y: 0 });
 	const hitPowerRef = useRef(0.5);
 	const hitAngleRef = useRef(0);
@@ -140,13 +148,8 @@ function Physics() {
 		const simulator = simulatorRef.current;
 
 		const [initialTrajactory, step] = simulator.simulate(
-			{ x: 1.422, y: 0.711 },
-			[
-				...Array.from({ length: 3 }, (_, i) => ({
-					x: 1.422 + Math.cos((Math.PI / 3) * 2 * i) * 0.2,
-					y: 0.711 + Math.sin((Math.PI / 3) * 2 * i) * 0.2,
-				})),
-			],
+			cueBallPos.current,
+			objectBallPositions.current,
 			-hitAngleRef.current,
 			hitPowerRef.current,
 			hitPointRef.current,
@@ -215,13 +218,8 @@ function Physics() {
 		const simulator = simulatorRef.current;
 
 		const [initialTrajactory, step] = simulator.simulate(
-			{ x: 1.422, y: 0.711 },
-			[
-				...Array.from({ length: 3 }, (_, i) => ({
-					x: 1.422 + Math.cos((Math.PI / 3) * 2 * i) * 0.2,
-					y: 0.711 + Math.sin((Math.PI / 3) * 2 * i) * 0.2,
-				})),
-			],
+			cueBallPos.current,
+			objectBallPositions.current,
 			-hitAngleRef.current,
 			hitPowerRef.current,
 			hitPointRef.current,
@@ -241,6 +239,49 @@ function Physics() {
 		);
 	}, []);
 
+	const findBallAtPoint = useCallback(
+		(position: Vector2<"physics">): number | null => {
+			for (let i = 0; i < objectBallPositions.current.length; i++) {
+				const ballPos = objectBallPositions.current[i];
+				const dx = ballPos.x - position.x;
+				const dy = ballPos.y - position.y;
+
+				if (Math.hypot(dx, dy) < hyperparams.ball.radius * 2) {
+					return i;
+				}
+			}
+
+			return null;
+		},
+		[],
+	);
+
+	const onBallPositionChange = useCallback<PointerEventHandler<HTMLDivElement>>(
+		(event) => {
+			event.preventDefault();
+
+			const rect = event.currentTarget.getBoundingClientRect();
+			const x = ((event.clientX - rect.left) / rect.width) * 2.844;
+			const y = ((event.clientY - rect.top) / rect.height) * 1.422;
+
+			if (event.button === 0) {
+				cueBallPos.current = { x, y };
+			} else if (event.button === 2) {
+				const ballIndex = findBallAtPoint({ x, y });
+				if (ballIndex !== null) {
+					objectBallPositions.current.splice(ballIndex, 1);
+				} else {
+					if (objectBallPositions.current.length >= 9) {
+						return;
+					}
+					objectBallPositions.current.push({ x, y });
+				}
+			}
+			refreshCanvas();
+		},
+		[findBallAtPoint, refreshCanvas],
+	);
+
 	return (
 		<div className={styles.root}>
 			<div
@@ -253,11 +294,16 @@ function Physics() {
 				}}
 			>
 				<div
+					role="application"
 					style={{
 						width: `min(100vw, 100vh * ${CANVAS_WIDTH} / ${CANVAS_HEIGHT})`,
 						aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
 						backgroundColor: "rgba(120, 120, 120, 0.5)",
 						position: "relative",
+					}}
+					onPointerDown={onBallPositionChange}
+					onContextMenu={(event) => {
+						event.preventDefault();
 					}}
 				>
 					{canvasSpec && (
