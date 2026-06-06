@@ -103,7 +103,7 @@ function HitControlPanel(props: HitControlPanelProps) {
 					type="range"
 					min="0"
 					max="1"
-					step="0.01"
+					step="0.001"
 					value={hitPower}
 					onChange={onHitPowerChange}
 				/>

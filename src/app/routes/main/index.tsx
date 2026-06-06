@@ -18,7 +18,11 @@ import type { FrameInfo } from "@/lib/capture";
 import Cuebit from "@/lib/cuebit";
 import logger from "@/lib/logger";
 import { device, onnx } from "@/lib/onnx";
-import { drawTexture, drawTrajectory, TextureTransformer } from "@/lib/painter";
+import {
+	drawTexture,
+	TextureTransformer,
+	TrajectoryPainter,
+} from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import styles from "./index.module.css";
 
@@ -130,6 +134,7 @@ function Main() {
 			simulator: Simulator,
 			trajectoryDrawerCanvas: CanvasHandle<"2d">,
 			overlayCanvas: CanvasHandle<"webgpu">,
+			trajectoryPainter: TrajectoryPainter,
 			textureTransformer: TextureTransformer,
 			resizedFrameDebugCanvas: CanvasHandle<"webgpu">,
 			tableMaskDebugCanvas: CanvasHandle<"webgpu">,
@@ -454,7 +459,7 @@ function Main() {
 				});
 
 				if (resolvedState?.cueBall) {
-					const [initialTrajectory, step] = simulator.simulate(
+					const [initialSnapshot, step] = simulator.simulate(
 						rerange(resolvedState.cueBall, 2844, 2.844),
 						resolvedState.objectBalls.map((p) => rerange(p, 2844, 2.844)),
 						resolvedState.cue.angle,
@@ -462,16 +467,16 @@ function Main() {
 						hitPointRef.current,
 					);
 
-					const trajectories = [initialTrajectory];
+					const snapshots = [initialSnapshot];
 					measure(() => {
 						for (let i = 0; i < 600; i++) {
-							const trajectory = step();
-							trajectories.push(trajectory);
+							const snapshot = step();
+							snapshots.push(snapshot);
 						}
 					}, "Simulate Trajectory");
 
-					drawTrajectory(trajectoryDebugCanvas, trajectories);
-					drawTrajectory(trajectoryDrawerCanvas, trajectories);
+					trajectoryPainter.drawTrajectories(trajectoryDebugCanvas, snapshots);
+					trajectoryPainter.drawTrajectories(trajectoryDrawerCanvas, snapshots);
 					textureTransformer.drawTransformed(
 						trajectoryDrawerCanvas,
 						overlayCanvas,
@@ -639,6 +644,8 @@ function Main() {
 					),
 				);
 
+				const trajectoryPainter = new TrajectoryPainter(2844, 1422);
+
 				let busy = false;
 				const tick = () => {
 					if (ac.signal.aborted) return;
@@ -650,6 +657,7 @@ function Main() {
 							simulator,
 							trajectoryDrawerCanvas,
 							overlayCanvas,
+							trajectoryPainter,
 							textureTransformer,
 							resizedFrameDebugCanvas,
 							tableMaskDebugCanvas,
@@ -673,7 +681,6 @@ function Main() {
 						"Main page initialization or frame loop failed",
 					);
 				}
-			} finally {
 			}
 		})();
 

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import HitControlPanel from "@/components/hit-params-panel";
 import usePlanarCanvas from "@/hooks/use-planar-canvas";
 import logger from "@/lib/logger";
-import { drawTrajectory } from "@/lib/painter";
+import { TrajectoryPainter } from "@/lib/painter";
 import Simulator from "@/lib/simulator";
 import { styles } from "./index.css";
 
@@ -79,10 +79,10 @@ class WorldRenderer {
 		return gfx;
 	}
 
-	public sync(trajectory: Trajectory) {
+	public sync(snapshot: TableSnapshot) {
 		const snapshots: BallSnapshot[] = [
-			trajectory.cueBall,
-			...trajectory.objectBalls,
+			snapshot.cueBall,
+			...snapshot.objectBalls,
 		];
 
 		this.container.removeChildren().forEach((child) => {
@@ -121,6 +121,10 @@ function Physics() {
 	const simulatorRef = useRef<Simulator>(new Simulator());
 	const previousTickRef = useRef<() => void>(null);
 
+	const trajectoryPainterRef = useRef<TrajectoryPainter>(
+		new TrajectoryPainter(CANVAS_WIDTH, CANVAS_HEIGHT),
+	);
+
 	const simulate = useCallback(() => {
 		if (!appRef.current || !rendererRef.current) {
 			logger.error("App or Renderer not initialized");
@@ -151,9 +155,9 @@ function Physics() {
 		renderer.sync(initialTrajactory);
 
 		const tick = () => {
-			const trajectory = step();
+			const snapshot = step();
 
-			renderer.sync(trajectory);
+			renderer.sync(snapshot);
 		};
 		app.ticker.add(tick);
 		previousTickRef.current = tick;
@@ -223,13 +227,18 @@ function Physics() {
 			hitPointRef.current,
 		);
 
-		const trajectries: Trajectory[] = [initialTrajactory];
+		const snapshots: TableSnapshot[] = [initialTrajactory];
 		for (let i = 0; i < 300; i++) {
 			const trajactory = step();
-			trajectries.push(trajactory);
+			snapshots.push(trajactory);
 		}
 
-		drawTrajectory(canvasHandle, trajectries, SCALE, true);
+		trajectoryPainterRef.current.drawTrajectories(
+			canvasHandle,
+			snapshots,
+			SCALE,
+			true,
+		);
 	}, []);
 
 	return (

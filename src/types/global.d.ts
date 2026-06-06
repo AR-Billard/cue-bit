@@ -67,6 +67,9 @@ declare global {
 		readonly rb: Vector2<S>;
 	};
 
+	/**
+	 * 공의 순간 상태 스냅샷
+	 */
 	type BallSnapshot = {
 		readonly position: Vector3;
 		readonly rotation: Quaternion;
@@ -76,9 +79,19 @@ declare global {
 		readonly collided: boolean;
 	};
 
-	type Trajectory = {
+	/**
+	 * 테이블의 순간 상태 스냅샷
+	 */
+	type TableSnapshot = {
 		readonly cueBall: BallSnapshot;
 		readonly objectBalls: BallSnapshot[];
+	};
+
+    /**
+     * 단일 공의 궤적 정보
+     */
+	type BallTrajectory = {
+		readonly snapshots: BallSnapshot[];
 	};
 
 	type TableApproximation = {

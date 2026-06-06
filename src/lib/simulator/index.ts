@@ -177,7 +177,7 @@ class Simulator {
 		angle: number,
 		power: number,
 		hitPoint: Vector2<"unit">,
-	): [Trajectory, () => Trajectory] {
+	): [TableSnapshot, () => TableSnapshot] {
 		if (objectBallPositions.length > this.objectBalls.length) {
 			logger.warn("Too many balls");
 		}
@@ -213,7 +213,7 @@ class Simulator {
 			}
 		});
 
-		const initialTrajectory: Trajectory = {
+		const initialSnapshot: TableSnapshot = {
 			cueBall: {
 				position: this.cueBall.rigidbody.translation(),
 				rotation: this.cueBall.rigidbody.rotation(),
@@ -260,7 +260,7 @@ class Simulator {
 		);
 
 		return [
-			initialTrajectory,
+			initialSnapshot,
 			() => {
 				this.applyRollingResistance(this.cueBall);
 				this.objectBalls.forEach(this.applyRollingResistance.bind(this));
