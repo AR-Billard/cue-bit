@@ -547,7 +547,7 @@ function Main() {
 					}),
 				);
 				logger.info(
-					`Camera stream started with resolution ${frameInfo.width}x${frameInfo.height}`,
+					`카메라 스트림 해상도: ${frameInfo.width}x${frameInfo.height}`,
 				);
 
 				const trajectoryDrawerCanvas = createOffscreenCanvasHandle(2844, 1422);
@@ -557,10 +557,10 @@ function Main() {
 				);
 
 				const cuebit = new Cuebit(device, onnx, frameInfo);
-				logger.info("Cuebit instance created");
+				logger.info("Cuebit 파이프라인 준비됨");
 
 				const simulator = new Simulator();
-				logger.info("Simulator instance created");
+				logger.info("물리 시뮬레이터 준비됨");
 
 				const resizedFrameDebugCanvas = await guard(
 					createDebugGPUCanvas(
@@ -674,7 +674,7 @@ function Main() {
 				video.requestVideoFrameCallback(tick);
 			} catch (error) {
 				if (error instanceof Error && error.name === "AbortError") {
-					logger.info("Initialization aborted");
+					logger.info("초기화 과정이 중단됨");
 				} else {
 					logger.error(
 						{ err: error },

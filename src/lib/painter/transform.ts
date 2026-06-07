@@ -1,4 +1,5 @@
 import { alignTo16 } from "@/common";
+import logger from "../logger";
 import transformShader from "./shaders/transform.wgsl";
 
 export class TextureTransformer implements Disposable {
@@ -109,7 +110,7 @@ export class TextureTransformer implements Disposable {
 				},
 				{
 					texture: this.sourceTexture,
-                    premultipliedAlpha: true,
+					premultipliedAlpha: true,
 				},
 				[source.canvas.width, source.canvas.height],
 			);

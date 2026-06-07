@@ -816,11 +816,11 @@ class Cuebit {
 	): [Detection | null, Detection[], Detection | null] {
 		let table: Detection | null = null;
 		const balls: Detection[] = [];
-		const ballClassIds = new Set([0, 2, 4, 5]);
+		const ballClassIds = new Set([0, 2, 5, 6]);
 		let cue: Detection | null = null;
 
 		for (const detection of detections) {
-			if (detection.classId === 3) {
+			if (detection.classId === 4) {
 				// NOTE: 2: table
 				if (table === null || detection.confidence > table.confidence) {
 					table = detection;
@@ -982,13 +982,13 @@ class Cuebit {
 
 		logger.info(
 			table
-				? `인식된 테이블 index: ${table.index}, confidence: ${table.confidence}, bbox: (${table.bbox.lt.x}, ${table.bbox.lt.y}), (${table.bbox.rb.x}, ${table.bbox.rb.y})`
+				? `인식된 테이블 index: ${table.index}, confidence: ${table.confidence.toFixed(2)}, bbox: (${table.bbox.lt.x.toFixed(0)}, ${table.bbox.lt.y.toFixed(0)}), (${table.bbox.rb.x.toFixed(0)}, ${table.bbox.rb.y.toFixed(0)})`
 				: "테이블 인식 실패",
 		);
 		logger.info(`인식된 공 ${balls.length}개`);
 		logger.info(
 			cue
-				? `인식된 큐 index: ${cue.index}, confidence: ${cue.confidence}, bbox: (${cue.bbox.lt.x}, ${cue.bbox.lt.y}), (${cue.bbox.rb.x}, ${cue.bbox.rb.y})`
+				? `인식된 큐 index: ${cue.index}, confidence: ${cue.confidence.toFixed(2)}, bbox: (${cue.bbox.lt.x.toFixed(0)}, ${cue.bbox.lt.y.toFixed(0)}), (${cue.bbox.rb.x.toFixed(0)}, ${cue.bbox.rb.y.toFixed(0)})`
 				: "큐 인식 실패",
 		);
 
