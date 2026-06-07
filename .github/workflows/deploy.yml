@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: pnpm 설치
         uses: pnpm/action-setup@v4
